@@ -1081,23 +1081,7 @@
       border-bottom: 1px solid var(--line);
     }
 
-    .collect-row {
-      display: grid;
-      grid-template-columns: 1fr auto auto auto;
-      gap: 8px;
-      align-items: center;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--line);
-      transition: background .1s;
-    }
 
-    .collect-row:last-child {
-      border-bottom: 0;
-    }
-
-    .collect-row:active {
-      background: #f0eee8;
-    }
 
     .collect-name {
       font-size: 16px;
@@ -1132,6 +1116,67 @@
       background: #f0eee8;
       border-top: 1px solid var(--line);
       font-weight: 800;
+    }
+
+    /* 收款總覽明細 */
+    .collect-row {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .collect-row:last-child {
+      border-bottom: 0;
+    }
+
+    .collect-row-header {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 12px 14px 6px;
+      cursor: pointer;
+      transition: background .1s;
+    }
+
+    .collect-row-header:active {
+      background: #f0eee8;
+    }
+
+    .collect-detail {
+      display: none;
+      padding: 0 14px 12px;
+    }
+
+    .collect-detail.open {
+      display: block;
+    }
+
+    .collect-detail-item {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 6px;
+      padding: 5px 0;
+      border-top: 1px dashed var(--line);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .collect-detail-item:first-child {
+      border-top: none;
+    }
+
+    .collect-detail-name {
+      overflow-wrap: anywhere;
+    }
+
+    .collect-detail-amount {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .collect-detail-fee {
+      text-align: right;
+      white-space: nowrap;
+      color: #b07830;
     }
 
     /* 代購費手動調整 */
@@ -1832,7 +1877,7 @@
             min="0"
             placeholder="第${i + 1}筆金額"
             value="${row.amount}"
-            style="min-height:48px;font-size:20px;font-weight:800"
+            style="min-height:48px;font-size:20px;font-weight:800;cursor:pointer;caret-color:transparent;background:#fffbf2;border-color:var(--warn)"
           >
           <span style="font-size:18px;font-weight:900;min-width:72px;text-align:right;color:var(--ink)">${row.amount ? money(row.amount) : ""}</span>
           <button class="remove-receipt-btn" data-row="${i}" style="min-height:40px;padding:0 10px;border-radius:8px;background:#ffe2df;color:var(--danger);font-weight:800;font-size:18px;${state.receiptRows.length === 1 ? "opacity:.3;pointer-events:none" : ""}">✕</button>
@@ -1978,10 +2023,13 @@
         if (purchase.status === "missing" || !unitPrice) return;
         const itemFee = calcItemFee(purchase, unitPrice);
         allocationFor(item).filter(order => order.assignedQty > 0).forEach(order => {
-          if (!customers.has(order.customer)) customers.set(order.customer, { goods: 0, fee: 0 });
+          if (!customers.has(order.customer)) customers.set(order.customer, { goods: 0, fee: 0, items: [] });
           const c = customers.get(order.customer);
-          c.goods += order.assignedQty * unitPrice;
-          c.fee += itemFee * order.assignedQty;
+          const amount = order.assignedQty * unitPrice;
+          const fee = itemFee * order.assignedQty;
+          c.goods += amount;
+          c.fee += fee;
+          c.items.push({ name: order.item, qty: order.assignedQty, amount, fee });
         });
       });
 
@@ -1998,20 +2046,46 @@
       }
 
       let grandTotal = 0;
-      collectRows.innerHTML = entries.map(([customer, data]) => {
+      collectRows.innerHTML = entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
         grandTotal += total;
+        const detailRows = data.items.map(it => `
+          <div class="collect-detail-item">
+            <span class="collect-detail-name">${escapeHtml(it.name.replace(/^\d+\s*/, ""))} ×${it.qty}</span>
+            <span class="collect-detail-amount">${money(it.amount)}</span>
+            <span class="collect-detail-fee">+${money(it.fee)}</span>
+          </div>`).join("");
         return `<div class="collect-row">
-          <span class="collect-name">${escapeHtml(customer)}</span>
-          <span class="collect-goods">${money(data.goods)}</span>
-          <span class="collect-fee">+${money(data.fee)}</span>
-          <span class="collect-total">${money(total)}</span>
+          <div class="collect-row-header" data-collect-idx="${idx}">
+            <span class="collect-name">${escapeHtml(customer)} <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span></span>
+            <span class="collect-goods">${money(data.goods)}</span>
+            <span class="collect-fee">+${money(data.fee)}</span>
+            <span class="collect-total">${money(total)}</span>
+          </div>
+          <div class="collect-detail" id="collect-detail-${idx}">
+            <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;padding:4px 0 6px;font-size:11px;font-weight:800;color:var(--muted)">
+              <span>商品</span><span style="text-align:right">金額</span><span style="text-align:right">代購費</span>
+            </div>
+            ${detailRows}
+          </div>
         </div>`;
       }).join("");
 
       collectCount.textContent = entries.length;
       collectGrandTotal.textContent = money(grandTotal);
     }
+
+    // 收款總覽明細展開/收合
+    document.getElementById("collectRows").addEventListener("click", event => {
+      const header = event.target.closest("[data-collect-idx]");
+      if (!header) return;
+      const idx = header.dataset.collectIdx;
+      const detail = document.getElementById(`collect-detail-${idx}`);
+      if (!detail) return;
+      const isOpen = detail.classList.toggle("open");
+      const arrow = header.querySelector("span span");
+      if (arrow) arrow.textContent = isOpen ? "▼ 明細" : "▶ 明細";
+    });
 
     // Collect toggle
     document.getElementById("collectToggleBtn").addEventListener("click", () => {
@@ -2432,6 +2506,17 @@
       if (input.tagName === "INPUT" && input.dataset.field === "price") {
         event.preventDefault();
         input.blur();
+        openNumpad(input);
+      }
+    }, true);
+
+    // 攔截結帳金額欄位點擊，改用數字盤
+    document.getElementById("checkoutView").addEventListener("click", event => {
+      const input = event.target;
+      if (input.tagName === "INPUT" && input.classList.contains("receipt-amount-input")) {
+        event.preventDefault();
+        input.blur();
+        document.getElementById("numpadTitle").textContent = `第${Number(input.dataset.row) + 1}筆發票金額（單位：元）`;
         openNumpad(input);
       }
     }, true);
