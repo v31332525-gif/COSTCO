@@ -1422,7 +1422,7 @@
           </button>
           <div id="cancelledPanel" style="display:none;background:white;border:1px solid #ffd6d6;border-top:none;border-radius:0 0 10px 10px;padding:0 14px 10px">
             <div id="cancelledList"></div>
-            <button onclick="clearCancelledOrders()" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
+            <button id="clearCancelledBtn" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
           </div>
         </div>
 
@@ -1851,7 +1851,7 @@
                   <strong>#${row.seq}</strong>
                   <span>${escapeHtml(row.customer)} 要 ${row.qty}${row.assignedQty ? `，本週分到 ${row.assignedQty}` : ""}</span>
                   <button class="reschedule-btn" data-reschedule-seq="${row.seq}" data-customer="${escapeHtml(row.customer)}" data-assigned="${row.assignedQty}" data-waiting="${row.waitingQty}" type="button">改週</button>
-                  <button class="cancel-order" data-cancel-seq="${row.seq}" type="button">取消</button>
+                  <button class="cancel-order" data-cancel-seq="${row._uid || row.seq}" type="button">取消</button>
                 </div>
               `).join("")}
             </div>
@@ -2295,17 +2295,22 @@
     }
 
     function cancelOrder(seq) {
-      const seqNum = Number(seq);
-      if (isNaN(seqNum)) return;
+      const seqStr = String(seq).trim();
+      const seqNum = Number(seqStr);
 
-      // 先找有明確 seq 欄位且值相符的
-      let targetIndex = state.orders.findIndex(o => Number(o.seq) === seqNum && !isNaN(Number(o.seq)));
+      // 先用唯一ID比對（新增訂單有 _uid）
+      let targetIndex = state.orders.findIndex(o => o._uid && o._uid === seqStr);
 
-      // 找不到時再用 normalizeOrder 的邏輯（相容舊資料，以 index 推算 seq）
-      if (targetIndex === -1) {
+      // 用明確的 seq 欄位比對（必須是有效數字）
+      if (targetIndex === -1 && !isNaN(seqNum)) {
+        targetIndex = state.orders.findIndex(o => o.seq !== undefined && !isNaN(Number(o.seq)) && Number(o.seq) === seqNum);
+      }
+
+      // 最後 fallback：用 normalizeOrder 推算的 seq（相容舊資料）
+      if (targetIndex === -1 && !isNaN(seqNum)) {
         targetIndex = state.orders.findIndex((o, i) => {
           const n = normalizeOrder(o, i);
-          return Number(n.seq) === seqNum;
+          return !isNaN(Number(n.seq)) && Number(n.seq) === seqNum;
         });
       }
 
@@ -2323,7 +2328,7 @@
       if (!state.cancelledOrders) return;
       const order = { ...state.cancelledOrders[idx] };
       delete order.cancelledAt;
-      const newSeq = Math.max(0, ...state.orders.map((o, i) => Number(normalizeOrder(o, i).seq)).filter(n => !isNaN(n))) + 1;
+      const newSeq = Math.max(0, ...state.orders.map((o, i) => Number(normalizeOrder(o, i).seq))) + 1;
       state.orders.push({ ...order, seq: newSeq });
       state.cancelledOrders.splice(idx, 1);
       renderAll();
@@ -2333,10 +2338,10 @@
     function clearCancelledOrders() {
       if (!confirm("確定清空所有取消訂單紀錄？")) return;
       state.cancelledOrders = [];
-      saveState();
-      renderAll();
+      renderAll(); // renderAll 內包含 saveState
     }
     window.clearCancelledOrders = clearCancelledOrders;
+    document.getElementById("clearCancelledBtn").addEventListener("click", clearCancelledOrders);
 
     function renderCancelledOrders() {
       const list = document.getElementById("cancelledList");
@@ -2442,8 +2447,9 @@
     });
 
     document.getElementById("itemList").addEventListener("click", event => {
-      if (event.target.dataset.cancelSeq) {
-        cancelOrder(event.target.dataset.cancelSeq);
+      const cancelBtn = event.target.closest("[data-cancel-seq]");
+      if (cancelBtn) {
+        cancelOrder(cancelBtn.dataset.cancelSeq);
         renderAll();
         return;
       }
@@ -2522,8 +2528,13 @@
         return;
       }
 
+      const allSeqs = state.orders.map(o => Number(o.seq || 0)).filter(n => !isNaN(n) && n > 0);
+      const nextSeq = allSeqs.length > 0 ? Math.max(...allSeqs) + 1 : 1;
+      const uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
       const order = {
-        seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0)).filter(n => !isNaN(n))) + 1,
+        _uid: uid,
+        seq: nextSeq,
         date: activeBatch === "all" ? "" : activeBatch,
         batch: activeBatch === "all" ? "無日期" : activeBatch,
         customer: customerEl.value.trim(),
