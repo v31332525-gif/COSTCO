@@ -1240,6 +1240,63 @@
         align-items: start;
       }
     }
+
+    /* ── 週次切換列 ── */
+    .week-switcher {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: #f0eee8;
+      border-radius: 10px;
+      padding: 3px;
+      margin: 0 14px 10px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .week-switcher::-webkit-scrollbar { display: none; }
+    .week-tab {
+      flex: 0 0 auto;
+      padding: 6px 14px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .12s, color .12s;
+    }
+    .week-tab.active {
+      background: white;
+      color: var(--ink);
+      box-shadow: 0 1px 4px rgba(0,0,0,.10);
+    }
+    .week-tab.current-week { color: var(--accent-strong); font-weight: 800; }
+    .archive-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff7e8;
+      border: 1px solid #f1cc8a;
+      border-radius: 8px;
+      padding: 9px 13px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #714800;
+    }
+    .new-week-btn {
+      width: 100%;
+      min-height: 48px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: white;
+      font-size: 15px;
+      font-weight: 800;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -1267,6 +1324,11 @@
         </div>
       </section>
     </header>
+
+    <div class="week-switcher" id="weekSwitcher"></div>
+    <div class="archive-banner" id="archiveBanner" style="display:none;margin:0 14px 10px">
+      📦 目前查看的是歷史紀錄（唯讀），切回「本週」才能編輯
+    </div>
 
     <main>
       <section class="view active" id="shopView">
@@ -1422,8 +1484,14 @@
           </button>
           <div id="cancelledPanel" style="display:none;background:white;border:1px solid #ffd6d6;border-top:none;border-radius:0 0 10px 10px;padding:0 14px 10px">
             <div id="cancelledList"></div>
-            <button onclick="clearCancelledOrders()" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
+            <button id="clearCancelledBtn" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
           </div>
+        </div>
+
+        <!-- 開新週 -->
+        <div style="margin-top:32px;padding-top:20px;border-top:2px dashed var(--line)">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:700">📅 本週結束後</div>
+          <button class="new-week-btn" id="newWeekBtn">🆕 歸檔本週，開始新的一週</button>
         </div>
 
       </section>
@@ -1608,6 +1676,115 @@
       };
     }
 
+    // ── 週次歸檔系統 ──
+    // 所有歷史週用 costco-archive-v1 存，格式: [ { label, archivedAt, state } ]
+    function loadArchives() {
+      try {
+        const raw = localStorage.getItem("costco-archive-v1");
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    }
+
+    function saveArchives(archives) {
+      localStorage.setItem("costco-archive-v1", JSON.stringify(archives));
+    }
+
+    // 目前正在查看的週：null = 本週，number = 歷史 index
+    let viewingArchiveIndex = null;
+
+    function isViewingArchive() { return viewingArchiveIndex !== null; }
+
+    // 取得目前顯示用的資料（本週 or 歷史快照）
+    function currentViewState() {
+      if (!isViewingArchive()) return state;
+      const archives = loadArchives();
+      return archives[viewingArchiveIndex]?.state || state;
+    }
+
+    function renderWeekSwitcher() {
+      const switcher = document.getElementById("weekSwitcher");
+      const archives = loadArchives();
+      const tabs = [];
+
+      // 本週（永遠在最右邊）
+      tabs.push({ label: "📋 本週", index: null });
+
+      // 歷史（從新到舊）
+      archives.slice().reverse().forEach((arc, ri) => {
+        const realIndex = archives.length - 1 - ri;
+        tabs.unshift({ label: arc.label, index: realIndex });
+      });
+
+      switcher.innerHTML = tabs.map(tab => {
+        const isActive = tab.index === viewingArchiveIndex;
+        const isCurrent = tab.index === null;
+        return `<button class="week-tab${isActive ? " active" : ""}${isCurrent ? " current-week" : ""}" data-archive-index="${tab.index === null ? "current" : tab.index}">${tab.label}</button>`;
+      }).join("");
+    }
+
+    function switchWeekView(indexStr) {
+      viewingArchiveIndex = indexStr === "current" ? null : Number(indexStr);
+      renderWeekSwitcher();
+      // 顯示/隱藏唯讀 banner
+      document.getElementById("archiveBanner").style.display = isViewingArchive() ? "flex" : "none";
+      // 唯讀時鎖定操作區
+      const ordersForm = document.getElementById("orderForm");
+      const importPanel = document.querySelector(".import-panel");
+      const newWeekBtn = document.getElementById("newWeekBtn");
+      const opacity = isViewingArchive() ? "0.4" : "1";
+      const pe = isViewingArchive() ? "none" : "";
+      ordersForm.style.opacity = opacity;
+      ordersForm.style.pointerEvents = pe;
+      importPanel.style.opacity = opacity;
+      importPanel.style.pointerEvents = pe;
+      newWeekBtn.style.display = isViewingArchive() ? "none" : "";
+      renderAll();
+    }
+
+    document.getElementById("weekSwitcher").addEventListener("click", e => {
+      const btn = e.target.closest(".week-tab");
+      if (!btn) return;
+      switchWeekView(btn.dataset.archiveIndex);
+    });
+
+    function archiveCurrentWeek() {
+      // 產生標籤：用今天日期
+      const now = new Date();
+      const label = `${now.getMonth() + 1}/${now.getDate()} 歸檔`;
+      const archives = loadArchives();
+      archives.push({
+        label,
+        archivedAt: now.toISOString(),
+        state: JSON.parse(JSON.stringify(state)) // deep copy
+      });
+      saveArchives(archives);
+    }
+
+    document.getElementById("newWeekBtn").addEventListener("click", () => {
+      const orderCount = state.orders.length;
+      if (!confirm(`確定要歸檔本週（共 ${orderCount} 筆訂單）並開始新的一週嗎？\n\n歸檔後可在頂部切換查看，本週資料不會消失。`)) return;
+
+      // 歸檔
+      archiveCurrentWeek();
+
+      // 清空本週
+      state.orders = [];
+      state.purchases = {};
+      state.cancelledOrders = [];
+      state.receiptTotal = "";
+      state.receiptRows = [];
+      saveState();
+
+      // 切回本週視角
+      viewingArchiveIndex = null;
+      renderWeekSwitcher();
+      document.getElementById("archiveBanner").style.display = "none";
+      renderAll();
+
+      // 提示
+      alert("✅ 已歸檔！可以從頂部的週次列切回查看。");
+    });
+
     function normalizeOrder(order, index) {
       const date = normalizeDateValue(order.date || "");
       return {
@@ -1668,8 +1845,9 @@
     }
 
     function groupedItems() {
+      const vs = currentViewState();
       const map = new Map();
-      state.orders.forEach((order, index) => {
+      vs.orders.forEach((order, index) => {
         order = normalizeOrder(order, index);
         if (!matchesBatch(order)) return;
         const key = productKey(order.item);
@@ -1691,8 +1869,9 @@
     }
 
     function allBatches() {
+      const vs = currentViewState();
       const batches = [];
-      state.orders.forEach((order, index) => {
+      vs.orders.forEach((order, index) => {
         const normalized = normalizeOrder(order, index);
         if (!batches.includes(normalized.batch)) batches.push(normalized.batch);
       });
@@ -1710,11 +1889,14 @@
     }
 
     function purchaseFor(item, totalQty = 1, area = "待定位") {
-      if (!state.purchases[item]) {
-        state.purchases[item] = { boughtQty: totalQty, price: 0, status: "todo", area, note: "" };
+      const vs = currentViewState();
+      if (!vs.purchases[item]) {
+        // 歷史模式不寫入，回傳預設值
+        if (isViewingArchive()) return { boughtQty: totalQty, price: 0, status: "todo", area, note: "" };
+        vs.purchases[item] = { boughtQty: totalQty, price: 0, status: "todo", area, note: "" };
       }
-      if (!state.purchases[item].area) state.purchases[item].area = area;
-      return state.purchases[item];
+      if (!vs.purchases[item].area) vs.purchases[item].area = area;
+      return vs.purchases[item];
     }
 
     function itemArea(item) {
@@ -1901,17 +2083,20 @@
     }
 
     function renderCheckout() {
+      const vs = currentViewState();
       const regTotal = registeredTotal();
-      if (!state.receiptRows) state.receiptRows = [];
+      if (!vs.receiptRows) vs.receiptRows = [];
 
-      // 如果 receiptRows 是空的，至少顯示一列
-      if (state.receiptRows.length === 0) state.receiptRows.push({ label: "第1筆", amount: "" });
+      // 如果 receiptRows 是空的，至少顯示一列（歷史模式不補）
+      if (vs.receiptRows.length === 0 && !isViewingArchive()) vs.receiptRows.push({ label: "第1筆", amount: "" });
 
-      const receiptSum = state.receiptRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+      const receiptSum = vs.receiptRows.reduce((s, r) => s + Number(r.amount || 0), 0);
       const diff = receiptSum ? receiptSum - regTotal : 0;
 
+      const addBtnHtml = isViewingArchive() ? "" : `<button id="addReceiptBtn" style="min-height:34px;padding:0 12px;border-radius:8px;background:var(--accent);color:white;font-weight:800;font-size:13px">＋ 新增一筆</button>`;
+
       // 渲染每一列
-      document.getElementById("receiptRows").innerHTML = state.receiptRows.map((row, i) => `
+      document.getElementById("receiptRows").innerHTML = vs.receiptRows.map((row, i) => `
         <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center">
           <input
             class="receipt-amount-input"
@@ -1921,10 +2106,11 @@
             min="0"
             placeholder="第${i + 1}筆金額"
             value="${row.amount}"
-            style="min-height:48px;font-size:20px;font-weight:800;cursor:pointer;caret-color:transparent;background:#fffbf2;border-color:var(--warn)"
+            ${isViewingArchive() ? "readonly" : ""}
+            style="min-height:48px;font-size:20px;font-weight:800;cursor:${isViewingArchive() ? "default" : "pointer"};caret-color:transparent;background:#fffbf2;border-color:var(--warn)"
           >
           <span style="font-size:18px;font-weight:900;min-width:72px;text-align:right;color:var(--ink)">${row.amount ? money(row.amount) : ""}</span>
-          <button class="remove-receipt-btn" data-row="${i}" style="min-height:40px;padding:0 10px;border-radius:8px;background:#ffe2df;color:var(--danger);font-weight:800;font-size:18px;${state.receiptRows.length === 1 ? "opacity:.3;pointer-events:none" : ""}">✕</button>
+          <button class="remove-receipt-btn" data-row="${i}" style="min-height:40px;padding:0 10px;border-radius:8px;background:#ffe2df;color:var(--danger);font-weight:800;font-size:18px;${vs.receiptRows.length === 1 || isViewingArchive() ? "opacity:.3;pointer-events:none" : ""}">✕</button>
         </div>
       `).join("");
 
@@ -1934,8 +2120,8 @@
       diffEl.textContent = receiptSum ? `${diff > 0 ? "+" : ""}${money(diff)}` : "$0";
       diffEl.classList.toggle("bad", Math.abs(diff) > 0 && receiptSum > 0);
 
-      // 同步給 buildIssues 用的舊欄位
-      state.receiptTotal = receiptSum || "";
+      // 同步給 buildIssues 用的舊欄位（只在本週模式下寫）
+      if (!isViewingArchive()) state.receiptTotal = receiptSum || "";
 
       const issues = buildIssues();
       document.getElementById("issueCount").textContent = issues.length;
@@ -2006,15 +2192,53 @@
 
       // ── 社群貼文通知 ──
       const communityPreview = document.getElementById("communityPreview");
-      if (boughtEntries.length === 0) {
+      if (allEntries.length === 0) {
         communityPreview.textContent = "（填好單價後自動產生）";
       } else {
-        let lines = ["可以取貨囉！"];
-        boughtEntries.forEach(([customer, data]) => {
-          const shown = data.rows.slice(0, 2).map(r => r.item.replace(/^\d+\s*/, "")).join("、");
-          const extra = data.rows.length > 2 ? "、完整明細請私訊" : "";
-          lines.push(`${customer} 商品：${shown}${extra}`);
+        let lines = [];
+
+        // 有買到的客人
+        const boughtLines = [];
+        allEntries.forEach(([customer, data]) => {
+          if (data.rows.length > 0) {
+            const shown = data.rows.slice(0, 2).map(r => r.item.replace(/^\d+\s*/, "")).join("、");
+            const extra = data.rows.length > 2 ? "、完整明細請私訊" : "";
+            boughtLines.push(`${customer} 商品：${shown}${extra}`);
+          }
         });
+        if (boughtLines.length > 0) {
+          lines.push("✅ 可以取貨囉！");
+          lines.push(...boughtLines);
+        }
+
+        // 缺貨的客人
+        const missingLines = [];
+        allEntries.forEach(([customer, data]) => {
+          if (data.missingRows.length > 0) {
+            const shown = data.missingRows.map(r => r.item.replace(/^\d+\s*/, "")).join("、");
+            missingLines.push(`${customer}：${shown}`);
+          }
+        });
+        if (missingLines.length > 0) {
+          if (lines.length > 0) lines.push("");
+          lines.push("❌ 很抱歉以下商品本週缺貨：");
+          lines.push(...missingLines);
+        }
+
+        // 拆單排下週的客人
+        const waitingLines = [];
+        allEntries.forEach(([customer, data]) => {
+          if (data.waitingRows.length > 0) {
+            const shown = data.waitingRows.map(r => r.item.replace(/^\d+\s*/, "")).join("、");
+            waitingLines.push(`${customer}：${shown}`);
+          }
+        });
+        if (waitingLines.length > 0) {
+          if (lines.length > 0) lines.push("");
+          lines.push("⏳ 以下因限購已排到下週：");
+          lines.push(...waitingLines);
+        }
+
         communityPreview.textContent = lines.join("\n");
       }
 
@@ -2200,13 +2424,14 @@
     });
 
     function renderAll() {
+      renderWeekSwitcher();
       renderItems();
       renderCheckout();
       renderSplit();
       renderCollect();
       renderSummary();
       renderCancelledOrders();
-      saveState();
+      if (!isViewingArchive()) saveState();
     }
 
     function nextFriday() {
@@ -2526,6 +2751,7 @@
 
     // 結帳多筆輸入
     document.getElementById("checkoutView").addEventListener("input", event => {
+      if (isViewingArchive()) return;
       if (!event.target.classList.contains("receipt-amount-input")) return;
       const i = Number(event.target.dataset.row);
       if (!state.receiptRows) state.receiptRows = [];
@@ -2536,6 +2762,7 @@
     });
 
     document.getElementById("addReceiptBtn").addEventListener("click", () => {
+      if (isViewingArchive()) return;
       if (!state.receiptRows) state.receiptRows = [];
       state.receiptRows.push({ label: `第${state.receiptRows.length + 1}筆`, amount: "" });
       renderCheckout();
@@ -2543,6 +2770,7 @@
     });
 
     document.getElementById("checkoutView").addEventListener("click", event => {
+      if (isViewingArchive()) return;
       const btn = event.target.closest(".remove-receipt-btn");
       if (!btn) return;
       const i = Number(btn.dataset.row);
