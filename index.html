@@ -1444,8 +1444,13 @@
           <div class="split-list" id="lineMsgList"></div>
         </div>
 
-        <!-- 原本的分帳明細 -->
-        <h3 style="margin:16px 0 8px;font-size:15px;color:var(--muted)">📋 分帳明細</h3>
+        <!-- 複製到 Excel -->
+        <div style="margin:16px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <h3 style="margin:0;font-size:15px;color:var(--muted)">📋 分帳明細</h3>
+          <button id="copyExcelBtn" style="min-height:40px;padding:0 14px;border-radius:8px;background:#1d6f42;color:white;font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px">
+            📊 複製到 Excel
+          </button>
+        </div>
         <div class="split-list" id="splitList"></div>
       </section>
     </main>
@@ -1492,6 +1497,20 @@
       <div class="modal-actions">
         <button class="modal-cancel" id="rescheduleCancel">取消</button>
         <button class="modal-confirm" id="rescheduleConfirm">確認移週</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Excel 手動複製彈窗 -->
+  <div class="modal-overlay hidden" id="excelModalOverlay">
+    <div class="modal-box" style="max-width:420px;gap:10px">
+      <p class="modal-title">📊 複製 Excel 資料</p>
+      <p class="modal-sub" style="margin:0">點「全選文字」後，長按文字框選擇「複製」，再貼到 Excel</p>
+      <textarea id="excelModalTextarea" readonly rows="8"
+        style="width:100%;font-size:12px;font-family:monospace;border:1px solid var(--line);border-radius:8px;padding:8px;background:#f7f5ef;resize:none;color:var(--ink);line-height:1.5"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="modal-cancel" id="excelModalClose">關閉</button>
+        <button class="modal-confirm" id="excelModalSelectBtn">全選文字</button>
       </div>
     </div>
   </div>
@@ -1984,9 +2003,11 @@
               ${rows.map(row => `
                 <div class="mini-row"><span>${escapeHtml(row.item)} x${row.qty}</span><strong>${money(row.amount)}</strong></div>
                 <div class="mini-row" style="font-size:12px"><span style="padding-left:8px;color:var(--muted)">代購費</span><strong style="color:var(--muted)">+${money(row.fee)}</strong></div>
+                <div class="mini-row" style="font-size:12px;background:#f4f1ea;border-radius:5px;padding:3px 6px;margin-bottom:2px"><span style="color:var(--muted)">小計</span><strong style="color:var(--accent-strong)">${money(row.amount + row.fee)}</strong></div>
               `).join("")}
-              <div class="mini-row" style="margin-top:4px;padding-top:8px;border-top:1px solid var(--line)"><span>代購費合計</span><strong>${money(totalFee)}</strong></div>
-              <div class="mini-row"><span>總計</span><strong>${money(total)}</strong></div>
+              <div class="mini-row" style="margin-top:4px;padding-top:8px;border-top:1px solid var(--line)"><span>商品合計</span><strong>${money(subtotal)}</strong></div>
+              <div class="mini-row"><span>代購費合計</span><strong>${money(totalFee)}</strong></div>
+              <div class="mini-row" style="padding-top:6px;border-top:1px solid var(--line);margin-top:2px"><span style="font-weight:900;color:var(--ink)">總計</span><strong style="font-size:18px;color:var(--accent-strong)">${money(total)}</strong></div>
             </div>
             <button class="copy-btn" data-message="${escapeHtml(detailMsg)}">複製完整明細</button>
           </article>
@@ -2664,7 +2685,125 @@
     window.addEventListener("offline", () => setSync("offline"));
     window.addEventListener("online",  () => setSync("live"));
 
+    // ── 複製到 Excel ──
+    document.getElementById("copyExcelBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("copyExcelBtn");
+
+      // 按客人分組收集資料
+      const items = groupedItems();
+      const customerMap = new Map(); // customer -> [{ date, area, source, item, qty, isPromo, unitPrice, amount, fee, subtotal }]
+
+      items.forEach(item => {
+        const purchase = purchaseFor(item.item, item.totalQty);
+        const unitPrice = Number(purchase.price || 0);
+        const isMissing = purchase.status === "missing";
+        const itemFee = calcItemFee(purchase, unitPrice);
+        const isPromo = purchase.feeOverride === "normal" ? "" :
+          (purchase.bulky || /冷藏|冷凍/.test(itemArea(item))) ? "特價" : "";
+
+        allocationFor(item).forEach(order => {
+          const qty = order.assignedQty;
+          if (qty <= 0) return;
+          const amount = isMissing ? 0 : qty * unitPrice;
+          const fee = isMissing ? 0 : itemFee * qty;
+          const subtotal = amount + fee;
+          const orderDate = order.date || "";
+          const displayDate = orderDate ? orderDate.replace(/^(\d+)\/(\d+)$/, (_, m, d) => `${Number(m)}/${Number(d)}`) : "";
+
+          if (!customerMap.has(order.customer)) customerMap.set(order.customer, []);
+          customerMap.get(order.customer).push({
+            date: displayDate,
+            area: order.area || itemArea(item) || "",
+            source: order.source || "",
+            item: order.item,
+            qty, isPromo, unitPrice, amount, fee, subtotal
+          });
+        });
+      });
+
+      const rows = [];
+      // 標題列
+      rows.push(["日期", "姓名", "品類", "來源", "拿", "編號-商品簡稱", "數量", "特價", "售價", "合計", "代", "小計"]);
+
+      customerMap.forEach((lines, customer) => {
+        lines.forEach(r => {
+          rows.push([
+            r.date, customer, r.area, r.source, "",
+            r.item, r.qty, r.isPromo, r.unitPrice || "", r.amount || "", r.fee || "", r.subtotal || ""
+          ]);
+        });
+        // 客人小計列
+        const totalAmount = lines.reduce((s, r) => s + r.amount, 0);
+        const totalFee    = lines.reduce((s, r) => s + r.fee, 0);
+        const grandTotal  = totalAmount + totalFee;
+        rows.push(["", customer + " 小計", "", "", "", "", "", "", "", totalAmount, totalFee, grandTotal]);
+        rows.push([]); // 空行隔開
+      });
+
+      if (rows.length <= 1) {
+        btn.textContent = "⚠️ 還沒有資料";
+        setTimeout(() => btn.innerHTML = "📊 複製到 Excel", 1800);
+        return;
+      }
+
+      const tsv = rows.map(row => row.map(cell => {
+        const s = String(cell ?? "");
+        return s.includes("\t") || s.includes("\n") ? `"${s.replaceAll('"', '""')}"` : s;
+      }).join("\t")).join("\n");
+
+      // 先嘗試 clipboard API，失敗就開彈窗讓使用者手動複製
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(tsv);
+        copied = true;
+      } catch (e) {
+        copied = false;
+      }
+
+      if (copied) {
+        btn.innerHTML = "✅ 已複製，貼到 Excel 即可";
+        setTimeout(() => btn.innerHTML = "📊 複製到 Excel", 2200);
+      } else {
+        // 開彈窗，內建 textarea 讓使用者自己全選複製
+        openExcelModal(tsv);
+      }
+    });
+
+    // ── Excel 手動複製彈窗 ──
+    function openExcelModal(tsv) {
+      document.getElementById("excelModalOverlay").classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+      const ta = document.getElementById("excelModalTextarea");
+      ta.value = tsv;
+      setTimeout(() => { ta.focus(); ta.select(); }, 80);
+    }
+
+    function closeExcelModal() {
+      document.getElementById("excelModalOverlay").classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+
+    document.getElementById("excelModalClose").addEventListener("click", closeExcelModal);
+    document.getElementById("excelModalOverlay").addEventListener("click", e => {
+      if (e.target === document.getElementById("excelModalOverlay")) closeExcelModal();
+    });
+
+    document.getElementById("excelModalSelectBtn").addEventListener("click", async () => {
+      const ta = document.getElementById("excelModalTextarea");
+      ta.focus();
+      ta.select();
+      // 再試一次 clipboard
+      try {
+        await navigator.clipboard.writeText(ta.value);
+        document.getElementById("excelModalSelectBtn").textContent = "✅ 已複製！";
+        setTimeout(() => document.getElementById("excelModalSelectBtn").textContent = "全選文字", 1800);
+      } catch (e) {
+        // 無法自動複製，使用者已全選，自行長按複製
+      }
+    });
+
     renderAll();
   </script>
+
 </body>
 </html>
