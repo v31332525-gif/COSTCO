@@ -1367,7 +1367,7 @@
         <form class="order-form" id="orderForm">
           <label>
             客人名稱
-            <input id="customerName" required placeholder="例如 Amy">
+            <input id="customerName" placeholder="例如 Amy">
           </label>
           <label>
             收單來源
@@ -1380,7 +1380,7 @@
           </label>
           <label>
             商品名稱
-            <input id="productName" required placeholder="例如 雞腿排">
+            <input id="productName" placeholder="例如 雞腿排">
           </label>
           <label>
             賣場位置
@@ -1403,7 +1403,7 @@
           </label>
           <label>
             數量
-            <input id="quantity" required inputmode="numeric" type="number" min="1" value="1">
+            <input id="quantity" inputmode="numeric" type="number" min="1" value="1">
           </label>
           <label>
             備註
@@ -1411,6 +1411,7 @@
           </label>
           <button class="primary" type="submit">新增到本週清單</button>
           <button class="secondary" type="button" id="resetDemo">重置範例資料</button>
+          <button class="secondary" type="button" id="clearAllOrders" style="background:#fff0f0;color:#c0392b;border-color:#ffd6d6">🗑️ 清空所有訂單</button>
         </form>
 
         <!-- 取消訂單暫存區 -->
@@ -2492,18 +2493,37 @@
 
     document.getElementById("orderForm").addEventListener("submit", event => {
       event.preventDefault();
+
+      const customerEl = document.getElementById("customerName");
+      const productEl  = document.getElementById("productName");
+
+      // 明確驗證並捲動到問題欄位
+      if (!customerEl.value.trim()) {
+        customerEl.focus();
+        customerEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        customerEl.style.outline = "2px solid var(--danger)";
+        setTimeout(() => customerEl.style.outline = "", 2000);
+        return;
+      }
+      if (!productEl.value.trim()) {
+        productEl.focus();
+        productEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        productEl.style.outline = "2px solid var(--danger)";
+        setTimeout(() => productEl.style.outline = "", 2000);
+        return;
+      }
+
       const order = {
         seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0))) + 1,
         date: activeBatch === "all" ? "" : activeBatch,
         batch: activeBatch === "all" ? "無日期" : activeBatch,
-        customer: document.getElementById("customerName").value.trim(),
+        customer: customerEl.value.trim(),
         source: document.getElementById("orderSource").value,
         area: document.getElementById("productArea").value,
-        item: document.getElementById("productName").value.trim(),
+        item: productEl.value.trim(),
         qty: Number(document.getElementById("quantity").value || 1),
         note: document.getElementById("orderNote").value.trim()
       };
-      if (!order.customer || !order.item) return;
       state.orders.push(order);
       purchaseFor(order.item, order.qty, order.area);
       event.target.reset();
@@ -2514,6 +2534,14 @@
     document.getElementById("resetDemo").addEventListener("click", () => {
       localStorage.removeItem("costco-helper-v1");
       Object.assign(state, loadState());
+      renderAll();
+    });
+
+    document.getElementById("clearAllOrders").addEventListener("click", () => {
+      if (!confirm("確定要清空所有訂單嗎？\n（商品採購資料、取消紀錄也會一併清除）")) return;
+      state.orders = [];
+      state.purchases = {};
+      state.cancelledOrders = [];
       renderAll();
     });
 
