@@ -2296,13 +2296,17 @@
 
     function cancelOrder(seq) {
       const seqNum = Number(seq);
+      if (isNaN(seqNum)) return;
 
-      // 優先用 order 上明確的 seq 欄位比對（新增的訂單都有）
-      let targetIndex = state.orders.findIndex(o => Number(o.seq) === seqNum);
+      // 先找有明確 seq 欄位且值相符的
+      let targetIndex = state.orders.findIndex(o => Number(o.seq) === seqNum && !isNaN(Number(o.seq)));
 
-      // 找不到時再用 normalizeOrder 的邏輯（相容舊資料）
+      // 找不到時再用 normalizeOrder 的邏輯（相容舊資料，以 index 推算 seq）
       if (targetIndex === -1) {
-        targetIndex = state.orders.findIndex((o, i) => Number(normalizeOrder(o, i).seq) === seqNum);
+        targetIndex = state.orders.findIndex((o, i) => {
+          const n = normalizeOrder(o, i);
+          return Number(n.seq) === seqNum;
+        });
       }
 
       if (targetIndex !== -1) {
@@ -2319,7 +2323,7 @@
       if (!state.cancelledOrders) return;
       const order = { ...state.cancelledOrders[idx] };
       delete order.cancelledAt;
-      const newSeq = Math.max(0, ...state.orders.map((o, i) => Number(normalizeOrder(o, i).seq))) + 1;
+      const newSeq = Math.max(0, ...state.orders.map((o, i) => Number(normalizeOrder(o, i).seq)).filter(n => !isNaN(n))) + 1;
       state.orders.push({ ...order, seq: newSeq });
       state.cancelledOrders.splice(idx, 1);
       renderAll();
@@ -2329,6 +2333,7 @@
     function clearCancelledOrders() {
       if (!confirm("確定清空所有取消訂單紀錄？")) return;
       state.cancelledOrders = [];
+      saveState();
       renderAll();
     }
     window.clearCancelledOrders = clearCancelledOrders;
@@ -2518,7 +2523,7 @@
       }
 
       const order = {
-        seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0))) + 1,
+        seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0)).filter(n => !isNaN(n))) + 1,
         date: activeBatch === "all" ? "" : activeBatch,
         batch: activeBatch === "all" ? "無日期" : activeBatch,
         customer: customerEl.value.trim(),
