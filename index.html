@@ -1422,7 +1422,7 @@
           </button>
           <div id="cancelledPanel" style="display:none;background:white;border:1px solid #ffd6d6;border-top:none;border-radius:0 0 10px 10px;padding:0 14px 10px">
             <div id="cancelledList"></div>
-            <button onclick="if(confirm('確定清空所有取消訂單紀錄？')){state.cancelledOrders=[];renderAll();}" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
+            <button onclick="clearCancelledOrders()" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
           </div>
         </div>
 
@@ -2296,16 +2296,13 @@
 
     function cancelOrder(seq) {
       const seqNum = Number(seq);
-      // Find index first (more reliable than filter alone)
-      let targetIndex = -1;
-      state.orders.forEach((order, index) => {
-        if (Number(normalizeOrder(order, index).seq) === seqNum) targetIndex = index;
-      });
 
+      // 優先用 order 上明確的 seq 欄位比對（新增的訂單都有）
+      let targetIndex = state.orders.findIndex(o => Number(o.seq) === seqNum);
+
+      // 找不到時再用 normalizeOrder 的邏輯（相容舊資料）
       if (targetIndex === -1) {
-        // Fallback: seq might be based on index+1, try direct index
-        const directIndex = seqNum - 1;
-        if (directIndex >= 0 && directIndex < state.orders.length) targetIndex = directIndex;
+        targetIndex = state.orders.findIndex((o, i) => Number(normalizeOrder(o, i).seq) === seqNum);
       }
 
       if (targetIndex !== -1) {
@@ -2313,7 +2310,6 @@
         if (!state.cancelledOrders) state.cancelledOrders = [];
         const ts = new Date().toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
         state.cancelledOrders.push({ ...target, cancelledAt: ts });
-        // Remove by index — guaranteed to remove exactly one
         state.orders.splice(targetIndex, 1);
       }
       cleanupPurchases();
@@ -2328,6 +2324,14 @@
       state.cancelledOrders.splice(idx, 1);
       renderAll();
     }
+    window.restoreCancelledOrder = restoreCancelledOrder;
+
+    function clearCancelledOrders() {
+      if (!confirm("確定清空所有取消訂單紀錄？")) return;
+      state.cancelledOrders = [];
+      renderAll();
+    }
+    window.clearCancelledOrders = clearCancelledOrders;
 
     function renderCancelledOrders() {
       const list = document.getElementById("cancelledList");
