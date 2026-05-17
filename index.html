@@ -1422,7 +1422,7 @@
           </button>
           <div id="cancelledPanel" style="display:none;background:white;border:1px solid #ffd6d6;border-top:none;border-radius:0 0 10px 10px;padding:0 14px 10px">
             <div id="cancelledList"></div>
-            <button id="clearCancelledBtn" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
+            <button onclick="clearCancelledOrders()" style="margin-top:8px;width:100%;min-height:34px;border-radius:7px;background:#fff0f0;color:#c0392b;font-size:12px;font-weight:700">清空紀錄</button>
           </div>
         </div>
 
@@ -1851,7 +1851,7 @@
                   <strong>#${row.seq}</strong>
                   <span>${escapeHtml(row.customer)} 要 ${row.qty}${row.assignedQty ? `，本週分到 ${row.assignedQty}` : ""}</span>
                   <button class="reschedule-btn" data-reschedule-seq="${row.seq}" data-customer="${escapeHtml(row.customer)}" data-assigned="${row.assignedQty}" data-waiting="${row.waitingQty}" type="button">改週</button>
-                  <button class="cancel-order" data-cancel-seq="${row._uid || row.seq}" type="button">取消</button>
+                  <button class="cancel-order" data-cancel-seq="${row.seq}" type="button">取消</button>
                 </div>
               `).join("")}
             </div>
@@ -1956,34 +1956,63 @@
     }
 
     function renderSplit() {
+      // customers Map: customer -> { rows(已買), missingRows(缺貨), waitingRows(拆單排下週), source }
       const customers = new Map();
+
+      function ensureCustomer(customer, source) {
+        if (!customers.has(customer)) {
+          customers.set(customer, { rows: [], missingRows: [], waitingRows: [], source: source || "" });
+        }
+        return customers.get(customer);
+      }
+
       groupedItems().forEach(item => {
         const purchase = purchaseFor(item.item, item.totalQty);
         const unitPrice = Number(purchase.price || 0);
-        if (purchase.status === "missing" || !unitPrice) return;
-        const itemFee = calcItemFee(purchase, unitPrice);
-        allocationFor(item).filter(order => order.assignedQty > 0).forEach(order => {
-          if (!customers.has(order.customer)) customers.set(order.customer, { rows: [], source: order.source || "" });
-          customers.get(order.customer).rows.push({
-            item: order.item,
-            qty: order.assignedQty,
-            amount: Number(order.assignedQty) * unitPrice,
-            fee: itemFee * order.assignedQty
-          });
+        const itemFee = unitPrice ? calcItemFee(purchase, unitPrice) : 0;
+        const isMissing = purchase.status === "missing";
+
+        allocationFor(item).forEach(order => {
+          const c = ensureCustomer(order.customer, order.source);
+          const itemName = order.item;
+
+          if (isMissing) {
+            // 缺貨：不管數量，整筆記為缺貨
+            c.missingRows.push({ item: itemName, qty: order.qty });
+          } else {
+            // 有買到的部分
+            if (order.assignedQty > 0 && unitPrice) {
+              c.rows.push({
+                item: itemName,
+                qty: order.assignedQty,
+                amount: order.assignedQty * unitPrice,
+                fee: itemFee * order.assignedQty
+              });
+            }
+            // 拆單排下週的部分
+            if (order.waitingQty > 0) {
+              c.waitingRows.push({ item: itemName, qty: order.waitingQty });
+            }
+          }
         });
       });
 
+      // 只保留有任何紀錄的客人（有買到 or 缺貨 or 排下週）
+      const allEntries = Array.from(customers.entries()).filter(([, data]) =>
+        data.rows.length > 0 || data.missingRows.length > 0 || data.waitingRows.length > 0
+      );
+      // 有買到商品的客人（用於社群貼文）
+      const boughtEntries = allEntries.filter(([, data]) => data.rows.length > 0);
+
       // ── 社群貼文通知 ──
       const communityPreview = document.getElementById("communityPreview");
-      const communityEntries = Array.from(customers.entries());
-      if (communityEntries.length === 0) {
+      if (boughtEntries.length === 0) {
         communityPreview.textContent = "（填好單價後自動產生）";
       } else {
         let lines = ["可以取貨囉！"];
-        communityEntries.forEach(([customer, data]) => {
-          const items = data.rows;
-          const shown = items.slice(0, 2).map(r => r.item.replace(/^\d+\s*/, "")).join("、");
-          const extra = items.length > 2 ? "、完整明細請私訊" : "";
+        boughtEntries.forEach(([customer, data]) => {
+          const shown = data.rows.slice(0, 2).map(r => r.item.replace(/^\d+\s*/, "")).join("、");
+          const extra = data.rows.length > 2 ? "、完整明細請私訊" : "";
           lines.push(`${customer} 商品：${shown}${extra}`);
         });
         communityPreview.textContent = lines.join("\n");
@@ -1991,20 +2020,49 @@
 
       // ── 官方 LINE 個別通知 ──
       const lineMsgList = document.getElementById("lineMsgList");
-      if (communityEntries.length === 0) {
+      if (allEntries.length === 0) {
         lineMsgList.innerHTML = `<div class="empty">填好單價後會產生通知訊息</div>`;
       } else {
-        lineMsgList.innerHTML = communityEntries.map(([customer, data]) => {
-          const rows = data.rows;
-          const subtotal = rows.reduce((sum, r) => sum + r.amount, 0);
-          const totalFee = rows.reduce((sum, r) => sum + r.fee, 0);
+        lineMsgList.innerHTML = allEntries.map(([customer, data]) => {
+          const subtotal = data.rows.reduce((s, r) => s + r.amount, 0);
+          const totalFee = data.rows.reduce((s, r) => s + r.fee, 0);
           const total = subtotal + totalFee;
-          const lineMsg = `您好可以取貨囉！\n總金額是$${total.toLocaleString("zh-TW")}，有需要改天取貨可以先跟我說喔！`;
+
+          // 組合 LINE 訊息
+          let msgParts = [`${customer} 您好！`];
+
+          if (data.rows.length > 0) {
+            msgParts.push(`✅ 本週已幫您買到：`);
+            data.rows.forEach(r => msgParts.push(`  • ${r.item.replace(/^\d+\s*/, "")} x${r.qty}`));
+            msgParts.push(`💰 總金額：$${total.toLocaleString("zh-TW")}，可以取貨囉！`);
+          }
+          if (data.missingRows.length > 0) {
+            msgParts.push(`❌ 很抱歉，以下商品本週缺貨：`);
+            data.missingRows.forEach(r => msgParts.push(`  • ${r.item.replace(/^\d+\s*/, "")} x${r.qty}`));
+          }
+          if (data.waitingRows.length > 0) {
+            msgParts.push(`⏳ 以下商品因限購，已幫您排到下週：`);
+            data.waitingRows.forEach(r => msgParts.push(`  • ${r.item.replace(/^\d+\s*/, "")} x${r.qty}`));
+          }
+          if (data.rows.length === 0 && (data.missingRows.length > 0 || data.waitingRows.length > 0)) {
+            msgParts.push(`如有問題請隨時告知，感謝您的訂購！`);
+          } else if (data.rows.length > 0) {
+            msgParts.push(`有需要改天取貨可以先跟我說喔！`);
+          }
+
+          const lineMsg = msgParts.join("\n");
+
+          // 標籤顯示
+          const tags = [];
+          if (data.rows.length > 0) tags.push(`<span style="background:#e8f5e9;color:#2e7d32;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">✅ 已買</span>`);
+          if (data.missingRows.length > 0) tags.push(`<span style="background:#fff0ee;color:#c0392b;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">❌ 缺貨</span>`);
+          if (data.waitingRows.length > 0) tags.push(`<span style="background:#fff7e8;color:#b35900;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">⏳ 排下週</span>`);
+
           return `
             <article class="card customer-card" style="margin-bottom:0">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap">
                 <strong>${escapeHtml(customer)}</strong>
-                <span style="font-size:13px;color:var(--muted)">合計 ${money(total)}</span>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">${tags.join("")}${data.rows.length > 0 ? `<span style="font-size:13px;color:var(--muted);margin-left:4px">合計 ${money(total)}</span>` : ""}</div>
               </div>
               <div style="background:#f0eee8;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.75;white-space:pre-wrap;border:1px solid var(--line);margin-bottom:8px">${escapeHtml(lineMsg)}</div>
               <button class="copy-btn line-copy" data-message="${escapeHtml(lineMsg)}">複製 LINE 訊息</button>
@@ -2013,9 +2071,9 @@
         }).join("");
       }
 
-      // ── 原本分帳明細 ──
+      // ── 分帳明細（只顯示有買到的客人）──
       const list = document.getElementById("splitList");
-      list.innerHTML = communityEntries.map(([customer, data]) => {
+      list.innerHTML = boughtEntries.map(([customer, data]) => {
         const rows = data.rows;
         const subtotal = rows.reduce((sum, row) => sum + row.amount, 0);
         const totalFee = rows.reduce((sum, row) => sum + row.fee, 0);
@@ -2295,23 +2353,14 @@
     }
 
     function cancelOrder(seq) {
-      const seqStr = String(seq).trim();
-      const seqNum = Number(seqStr);
+      const seqNum = Number(seq);
 
-      // 先用唯一ID比對（新增訂單有 _uid）
-      let targetIndex = state.orders.findIndex(o => o._uid && o._uid === seqStr);
+      // 優先用 order 上明確的 seq 欄位比對（新增的訂單都有）
+      let targetIndex = state.orders.findIndex(o => Number(o.seq) === seqNum);
 
-      // 用明確的 seq 欄位比對（必須是有效數字）
-      if (targetIndex === -1 && !isNaN(seqNum)) {
-        targetIndex = state.orders.findIndex(o => o.seq !== undefined && !isNaN(Number(o.seq)) && Number(o.seq) === seqNum);
-      }
-
-      // 最後 fallback：用 normalizeOrder 推算的 seq（相容舊資料）
-      if (targetIndex === -1 && !isNaN(seqNum)) {
-        targetIndex = state.orders.findIndex((o, i) => {
-          const n = normalizeOrder(o, i);
-          return !isNaN(Number(n.seq)) && Number(n.seq) === seqNum;
-        });
+      // 找不到時再用 normalizeOrder 的邏輯（相容舊資料）
+      if (targetIndex === -1) {
+        targetIndex = state.orders.findIndex((o, i) => Number(normalizeOrder(o, i).seq) === seqNum);
       }
 
       if (targetIndex !== -1) {
@@ -2338,10 +2387,9 @@
     function clearCancelledOrders() {
       if (!confirm("確定清空所有取消訂單紀錄？")) return;
       state.cancelledOrders = [];
-      renderAll(); // renderAll 內包含 saveState
+      renderAll();
     }
     window.clearCancelledOrders = clearCancelledOrders;
-    document.getElementById("clearCancelledBtn").addEventListener("click", clearCancelledOrders);
 
     function renderCancelledOrders() {
       const list = document.getElementById("cancelledList");
@@ -2447,9 +2495,8 @@
     });
 
     document.getElementById("itemList").addEventListener("click", event => {
-      const cancelBtn = event.target.closest("[data-cancel-seq]");
-      if (cancelBtn) {
-        cancelOrder(cancelBtn.dataset.cancelSeq);
+      if (event.target.dataset.cancelSeq) {
+        cancelOrder(event.target.dataset.cancelSeq);
         renderAll();
         return;
       }
@@ -2528,13 +2575,8 @@
         return;
       }
 
-      const allSeqs = state.orders.map(o => Number(o.seq || 0)).filter(n => !isNaN(n) && n > 0);
-      const nextSeq = allSeqs.length > 0 ? Math.max(...allSeqs) + 1 : 1;
-      const uid = `uid_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
       const order = {
-        _uid: uid,
-        seq: nextSeq,
+        seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0))) + 1,
         date: activeBatch === "all" ? "" : activeBatch,
         batch: activeBatch === "all" ? "無日期" : activeBatch,
         customer: customerEl.value.trim(),
