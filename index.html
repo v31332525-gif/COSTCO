@@ -1665,11 +1665,7 @@
       if (override === "bulky") return 30;
       if (override === "hot") return 30;
       if (override === "cold") return 30;
-      if (override === "normal") {
-        let fee = 20;
-        if (price > 0 && price < 100) fee += 10;
-        return fee;
-      }
+      if (override === "normal") return 20;
       // Auto-detect
       if (purchase.bulky) return 30;                          // 大件：固定+30
       let fee = /冷藏|冷凍/.test(area) ? 30 : 20;           // 冷藏冷凍+30，其他+20
@@ -2039,20 +2035,16 @@
               </label>
               <label>小計<input value="${money(itemSubtotal(item))}" readonly></label>
             </div>
-            <button class="bulky-toggle ${purchase.bulky ? "bulky-on" : ""}" data-bulky="${escapeHtml(item.item)}" type="button">
-              📦 大件商品（+$30）${purchase.bulky ? " ✓" : ""}
-            </button>
             <div class="fee-preview">
               代購費：每件 +$${calcItemFee(purchase, purchase.price)}
-              ${purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
-              ${Number(purchase.price) > 0 && Number(purchase.price) < 100 ? "＋未滿$100再+$10" : ""}
+              ${purchase.feeOverride ? "（手動指定）" : purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
+              ${!purchase.feeOverride && Number(purchase.price) > 0 && Number(purchase.price) < 100 ? "＋未滿$100再+$10" : ""}
             </div>
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
-              <button class="fee-tag-btn ${!purchase.feeOverride ? 'active' : ''}" data-fee-override="" data-override-item="${escapeHtml(item.item)}">自動判斷</button>
-              <button class="fee-tag-btn ${purchase.feeOverride === 'free' ? 'active' : ''}" data-fee-override="free" data-override-item="${escapeHtml(item.item)}">🛒 自購 0 元</button>
-              <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">常溫 +20</button>
-              <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">❄️🔥📦 冷藏／熱食／大件 +30</button>
+              <button class="fee-tag-btn ${purchase.feeOverride === 'free' ? 'active' : ''}" data-fee-override="free" data-override-item="${escapeHtml(item.item)}">0 元</button>
+              <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">加 20 元</button>
+              <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">加 30 元</button>
             </div>
             <div class="status-row" style="grid-template-columns:1fr 1fr 1fr">
               <button data-status="done" class="${purchase.status === "done" ? "selected" : ""}">已拿到</button>
@@ -2814,7 +2806,7 @@
       if (event.target.dataset.feeOverride !== undefined && event.target.dataset.overrideItem !== undefined) {
         const p = purchaseFor(event.target.dataset.overrideItem);
         const val = event.target.dataset.feeOverride;
-        p.feeOverride = val || undefined;
+        p.feeOverride = (val && p.feeOverride !== val) ? val : undefined;
         renderAll();
         return;
       }
