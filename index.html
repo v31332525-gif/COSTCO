@@ -329,6 +329,7 @@
     }
 
     .compact-row {
+      cursor: pointer;
       display: grid;
       gap: 6px;
       padding: 11px;
@@ -347,7 +348,7 @@
     }
 
     .compact-title {
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 900;
       line-height: 1.35;
       overflow-wrap: anywhere;
@@ -2082,7 +2083,7 @@
         const customers = allocation.map(row => `#${row.seq} ${row.customer} x${row.qty}${row.waitingQty ? " 排下週" : ""}`).join("、");
         const qtyText = `需${item.totalQty} / 買${assigned}${waiting ? ` / 下${waiting}` : ""}`;
         return `
-          <article class="compact-row">
+          <article class="compact-row" data-jump="${escapeHtml(item.item)}">
             <div class="compact-product-line">
               <div class="compact-title">${escapeHtml(item.item)}</div>
               <span class="compact-pill">${escapeHtml(itemArea(item))}</span>
@@ -2743,6 +2744,22 @@
       if (!event.target.dataset.batch) return;
       activeBatch = event.target.dataset.batch;
       renderAll();
+    });
+
+    // 清單點一下 → 跳到對應商品卡
+    document.getElementById("compactList").addEventListener("click", event => {
+      const row = event.target.closest("[data-jump]");
+      if (!row) return;
+      const name = row.dataset.jump;
+      displayMode = "card";
+      document.querySelectorAll(".mode").forEach(btn => btn.classList.toggle("active", btn.dataset.mode === "card"));
+      renderItems();
+      const card = [...document.querySelectorAll("#itemList [data-item]")].find(c => c.dataset.item === name);
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.style.outline = "3px solid var(--accent)";
+        setTimeout(() => { card.style.outline = ""; }, 2000);
+      }
     });
 
     document.querySelectorAll(".mode").forEach(button => {
