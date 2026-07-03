@@ -36,22 +36,38 @@
     const db  = getDatabase(app);
     const DATA_REF = "costco-helper-v1";
 
+    // 商品名含 . # $ / [ ] 會被 Firebase 拒絕，存取時自動編碼/解碼
+    const BADKEY = /[.#$\/\[\]]/g;
+    function encKey(k) { return String(k).replace(BADKEY, c => "％" + c.charCodeAt(0).toString(16).padStart(2, "0")); }
+    function decKey(k) { return String(k).replace(/％([0-9a-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16))); }
+    function encAll(v) { if (Array.isArray(v)) return v.map(encAll); if (v && typeof v === "object") { const o = {}; for (const k in v) o[encKey(k)] = encAll(v[k]); return o; } return v; }
+    function decAll(v) { if (Array.isArray(v)) return v.map(decAll); if (v && typeof v === "object") { const o = {}; for (const k in v) o[decKey(k)] = decAll(v[k]); return o; } return v; }
+
+
     let _suppressNext = false; // 避免自己寫入後又觸發自己重繪
 
     // 把 Firebase 橋接掛到 window，讓主腳本呼叫
     window._fb = {
       save(stateObj) {
         _suppressNext = true;
-        set(ref(db, DATA_REF), stateObj).catch(err => {
+        try { set(ref(db, DATA_REF), encAll(stateObj)).catch(err => {
           console.warn("Firebase save error:", err);
+          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
           _suppressNext = false;
-        });
+        }); } catch (err) {
+          console.warn("Firebase save error:", err);
+          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
+          _suppressNext = false;
+        }
       },
       listen(callback) {
         onValue(ref(db, DATA_REF), snapshot => {
           if (_suppressNext) { _suppressNext = false; return; }
-          const data = snapshot.val();
+          const data = decAll(snapshot.val());
           if (data) callback(data);
+        }, err => {
+          console.warn("Firebase listen error:", err);
+          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
         });
       }
     };
@@ -78,6 +94,7 @@
 
     * {
       box-sizing: border-box;
+      touch-action: manipulation;
     }
 
     body {
@@ -1368,6 +1385,7 @@
           <button class="aisle" data-area="外面餐廳">外面餐廳</button>
           <button class="aisle" data-area="待定位">待定位</button>
         </div>
+        <button id="autoAreaBtn" style="margin-top:8px;padding:8px 14px;border:1px dashed var(--accent);border-radius:999px;background:transparent;color:var(--accent);font-size:13px">🧭 自動分類「待定位」商品</button>
         <div class="toolbar" aria-label="篩選商品">
           <button class="filter active" data-filter="all">全部</button>
           <button class="filter" data-filter="todo">未處理</button>
@@ -1556,6 +1574,18 @@
     </nav>
   </div>
 
+  <!-- 已拿到詢問 -->
+  <div class="numpad-overlay hidden" id="gotItOverlay">
+    <div class="numpad-box">
+      <div class="numpad-title">這樣商品拿到了嗎？</div>
+      <div class="numpad-display"><span id="gotItName" style="font-size:17px"></span></div>
+      <div class="numpad-grid" style="grid-template-columns:1fr 1fr">
+        <button class="np np-ok" data-gotit="yes" style="grid-column:auto">✅ 已拿到</button>
+        <button class="np np-cancel" data-gotit="no" style="grid-column:auto">還沒</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 數字盤 -->
   <div class="numpad-overlay hidden" id="numpadOverlay">
     <div class="numpad-box">
@@ -1630,6 +1660,7 @@
       const price = Number(unitPrice || 0);
       // Check manual override first
       const override = purchase.feeOverride;
+      if (override === "free") return 0;
       if (override === "bulky") return 30;
       if (override === "hot") return 30;
       if (override === "cold") return 30;
@@ -2018,6 +2049,7 @@
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
               <button class="fee-tag-btn ${!purchase.feeOverride ? 'active' : ''}" data-fee-override="" data-override-item="${escapeHtml(item.item)}">自動判斷</button>
+              <button class="fee-tag-btn ${purchase.feeOverride === 'free' ? 'active' : ''}" data-fee-override="free" data-override-item="${escapeHtml(item.item)}">🛒 自購 0 元</button>
               <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">常溫 +20</button>
               <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">❄️🔥📦 冷藏／熱食／大件 +30</button>
             </div>
@@ -2485,6 +2517,26 @@
       return headers.findIndex(header => names.some(name => String(header || "").includes(name)));
     }
 
+    const AREA_KEYWORDS = [
+      ["生活用品", ["衛生紙","廚房紙巾","濕紙巾","紙巾","洗衣","洗碗","沐浴","洗髮","潤髮","牙膏","牙刷","垃圾袋","保鮮","收納","保溫瓶","水壺","乳液","防曬","洗面乳","適樂膚","鋁箔","夾鏈袋","電池","燈泡","清潔","漂白","柔軟精","尿布","洗手乳","衛生棉","毛巾","牙線","面紙"]],
+      ["冷藏/冷凍", ["鮮奶","牛奶","鮮乳","優格","優酪乳","起司","乳酪","雞腿","雞胸","雞翅","豬肉","牛肉","牛小排","鮭魚","鱈魚","魚排","蝦仁","白蝦","干貝","水餃","披薩","冰淇淋","豆腐","雞蛋","香腸","培根","火腿","奶油","冷凍","餛飩","湯圓","毛豆","烤雞","烤大腿","溫泉蛋","貝果","可頌"]],
+      ["水果", ["蘋果","香蕉","葡萄","草莓","藍莓","奇異果","鳳梨","芒果","櫻桃","柳橙","橘子","酪梨","水梨","西瓜","哈密瓜","火龍果","柚子","檸檬"]],
+      ["飲品區", ["可樂","汽水","果汁","咖啡","氣泡水","礦泉水","豆漿","燕麥奶","奶茶","綠茶","紅茶","烏龍茶","運動飲料"]],
+      ["調味料", ["醬油","烏醋","白醋","砂糖","胡椒","香料","橄欖油","沙拉油","苦茶油","味噌","咖哩","番茄醬","美乃滋","蜂蜜","高湯","味醂","麻油","蠔油"]],
+      ["零食區", ["餅乾","洋芋片","巧克力","糖果","堅果","腰果","杏仁","開心果","軟糖","蘇打餅","爆米花","泡麵","米果","肉乾","魷魚絲"]],
+      ["酒", ["啤酒","紅酒","白酒","威士忌","清酒","高粱","伏特加","梅酒"]],
+      ["保健/養生", ["維他命","維生素","魚油","葉黃素","益生菌","膠原蛋白","鈣片","B群","滴雞精","雞精","酵素","葡萄糖胺"]],
+      ["寵物", ["貓砂","貓糧","狗糧","飼料","潔牙骨","罐罐"]],
+      ["藥品", ["感冒","止痛","普拿疼","腸胃藥","眼藥","痠痛"]]
+    ];
+    function guessAreaFromName(name) {
+      const s = String(name || "");
+      for (const pair of AREA_KEYWORDS) {
+        if (pair[1].some(w => s.includes(w))) return pair[0];
+      }
+      return "";
+    }
+
     function areaFromCategory(category) {
       const raw = String(category || "").trim();
       const map = {
@@ -2534,7 +2586,7 @@
           date: indexes.date >= 0 ? row[indexes.date] : "",
           customer: indexes.customer >= 0 ? row[indexes.customer] : "",
           source: "試算表匯入",
-          area: areaFromCategory(indexes.area >= 0 ? row[indexes.area] : ""),
+          area: (function(){ const a = areaFromCategory(indexes.area >= 0 ? row[indexes.area] : ""); return a === "待定位" ? (guessAreaFromName(item) || a) : a; })(),
           item,
           qty: indexes.qty >= 0 ? row[indexes.qty] : 1,
           note: noteParts.join(" / "),
@@ -2667,6 +2719,19 @@
     document.getElementById("quickSearch").addEventListener("input", event => {
       searchText = event.target.value.trim();
       renderItems();
+    });
+
+    document.getElementById("autoAreaBtn").addEventListener("click", () => {
+      if (isViewingArchive()) return;
+      let n = 0;
+      state.orders.forEach(o => {
+        if (!o.area || o.area === "待定位") {
+          const g = guessAreaFromName(o.item);
+          if (g) { o.area = g; const p = purchaseFor(o.item); if (!p.area || p.area === "待定位") p.area = g; n++; }
+        }
+      });
+      renderAll();
+      alert(n ? "已自動分類 " + n + " 筆商品" : "沒有對到關鍵字的商品，請手動指定位置");
     });
 
     document.getElementById("currentBuyer").addEventListener("change", event => {
@@ -2809,7 +2874,7 @@
         batch: activeBatch === "all" ? "無日期" : activeBatch,
         customer: customerEl.value.trim(),
         source: document.getElementById("orderSource").value,
-        area: document.getElementById("productArea").value,
+        area: (function(){ const sel = document.getElementById("productArea").value; if (sel && sel !== "待定位") return sel; return guessAreaFromName(productEl.value.trim()) || sel; })(),
         item: productEl.value.trim(),
         qty: Number(document.getElementById("quantity").value || 1),
         note: document.getElementById("orderNote").value.trim()
@@ -2870,6 +2935,7 @@
 
     // ── 數字盤邏輯 ──
     let numpadTarget = null;
+    let gotItItem = null;
     let numpadValue = "";
 
     function openNumpad(input) {
@@ -2908,11 +2974,21 @@
       }
       if (key === "cancel") { closeNumpad(); return; }
       if (key === "ok") {
-        if (numpadTarget) {
-          numpadTarget.value = numpadValue || "0";
-          numpadTarget.dispatchEvent(new Event("input", { bubbles: true }));
+        const target = numpadTarget;
+        if (target) {
+          target.value = numpadValue || "0";
+          target.dispatchEvent(new Event("input", { bubbles: true }));
         }
         closeNumpad();
+        if (target && target.dataset.field === "price" && Number(target.value) > 0) {
+          const card = target.closest("[data-item]");
+          if (card && purchaseFor(card.dataset.item).status !== "done") {
+            gotItItem = card.dataset.item;
+            document.getElementById("gotItName").textContent = gotItItem;
+            document.getElementById("gotItOverlay").classList.remove("hidden");
+            document.body.style.overflow = "hidden";
+          }
+        }
         return;
       }
       if (key === "del") {
@@ -2922,6 +2998,24 @@
         if (numpadValue.length < 7) numpadValue += key;
       }
       updateNumpadDisplay();
+    });
+
+    document.getElementById("gotItOverlay").addEventListener("click", event => {
+      const act = event.target.dataset.gotit;
+      const overlay = document.getElementById("gotItOverlay");
+      if (event.target === overlay || act === "no") {
+        overlay.classList.add("hidden");
+        document.body.style.overflow = "";
+        gotItItem = null;
+        return;
+      }
+      if (act === "yes") {
+        if (gotItItem) purchaseFor(gotItItem).status = "done";
+        overlay.classList.add("hidden");
+        document.body.style.overflow = "";
+        gotItItem = null;
+        renderAll();
+      }
     });
 
     // 攔截單價欄位點擊，改用數字盤
@@ -3074,6 +3168,7 @@
       if (!el) return;
       if (status === "live")    { el.textContent = "🟢 同步中";   el.style.color = "var(--ok)"; }
       if (status === "offline") { el.textContent = "🔴 離線";     el.style.color = "var(--danger)"; }
+      if (status === "error")   { el.textContent = "🔴 同步失敗（資料庫拒絕存取）"; el.style.color = "var(--danger)"; }
       if (status === "waiting") { el.textContent = "⚪ 連線中…";  el.style.color = ""; }
     }
 
@@ -3085,6 +3180,7 @@
     });
 
     // 偵測離線
+    window.addEventListener("fb-error", () => setSync("error"));
     window.addEventListener("offline", () => setSync("offline"));
     window.addEventListener("online",  () => setSync("live"));
 
