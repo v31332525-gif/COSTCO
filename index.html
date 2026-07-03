@@ -1350,10 +1350,6 @@
 
     <main>
       <section class="view active" id="shopView">
-        <label class="quick-search">
-          快速搜尋
-          <input id="quickSearch" placeholder="輸入貨號、商品名、客人名稱">
-        </label>
         <div class="week-control">
           <div class="week-control-row">
             <label>
@@ -1386,13 +1382,17 @@
           <button class="aisle" data-area="外面餐廳">外面餐廳</button>
           <button class="aisle" data-area="待定位">待定位</button>
         </div>
-        <button id="autoAreaBtn" style="margin-top:8px;padding:8px 14px;border:1px dashed var(--accent);border-radius:999px;background:transparent;color:var(--accent);font-size:13px">🧭 自動分類「待定位」商品</button>
         <div class="toolbar" aria-label="篩選商品">
           <button class="filter active" data-filter="all">全部</button>
           <button class="filter" data-filter="todo">未處理</button>
           <button class="filter" data-filter="done">已拿到</button>
           <button class="filter" data-filter="problem">缺貨/待確認</button>
+          <button id="autoAreaBtn" style="padding:8px 14px;border:1px dashed var(--accent);border-radius:999px;background:transparent;color:var(--accent);font-size:14px">🧭 自動分類</button>
         </div>
+        <label class="quick-search">
+          快速搜尋
+          <input id="quickSearch" placeholder="輸入貨號、商品名、客人名稱">
+        </label>
         <div class="modebar" aria-label="顯示模式">
           <button class="mode active" data-mode="card">商品卡</button>
           <button class="mode" data-mode="compact">清單</button>
