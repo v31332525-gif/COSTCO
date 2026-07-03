@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>好市多代購採買助手</title>
   <!-- ===== 網站圖示 / PWA 圖示 ===== -->
   <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADvUlEQVR4nLWXTWgTWxTHf/ORRJunSWxqY9M2ryGiC0VwoQsX3ahUhG7ciyK66KKllKqbihurIiooCoouKkXNQqgLoe5aVESlUgSxfrSL1Gg/TRPTJk0yk7cob8zXZKbEnt2995zz/91z7lzuCKzSvjU2ZsutB0IhYTX5TDkbiVYCI66VuNlYXcJKhEuZXjVKVuBvi5fLWURlRlxyu6l7+FAbf29tJZtMmgIprIS8WnEAQZaxbtv2ZyyKmC3Zt8bGbC6ErOdYfeYMzrY2U0mbPn3SXYv29TF37pzuunYG1qLveparJZsRT09OokxNmRaQGxqQPR5DiEAoJOi2INdiDx6g/PplGsC6fTvOkydN+ZoCEGw2Nl+9ahogev++aV/BTO/FqqqyB63Qxv1+BKuVbCJh6Gt4FQNgsTDX08Pyhw9506kvX5g9fVobR27eZNznw3HsGL4XL7Dt2GGYWrcCtl27sO/fz7q9e1m3ezeCxVLkM3/xItF79/h3dBRxwwbSExMsDQ/jOH4cAHVxkakTJ0i8fq0LoHsGJJcLV3t73pwaj5McGaGquRlYuStSY2MkXr7EfugQFr8fh9+v+WfCYdRYrFwB9FuwNDTE4uAgKApLQ0PMdHYy39uLdevWnGiRmt7e4h2qKgt37/L98GGWP34sC1D2K5jt6SHa38/6PXvY1N2NXFenCSiRCFJ1NbLXi2C3o8ZiiBs3AjB3/jzRvr6ywtoedMm8XrzBIHX9/bja2zXx5Nu3zHR1oUQimq/94EFijx9rY+epU4gOR2UAmXCY5OioNk6NjTHT3c3S8DA1ly9jDQS0NdvOncQePSKbyazA19dTe/06iMYfmQD6V7FcW4v7wgV+B4NIbjeujg7kLVtKJgo1N/NPayuburq0ucSrV8x0dpKZni4ZEwiFhLKIostF+utXaq5coebSJU1cmZ9n9uxZUJQ/zqpK5NYtku/eaVPr9+2jfnAw/+AWapSclSS8AwM0PH+Os60NyeXSln4/ecJkS8tKUkkCILu8TObHD1AUpjs6SIdCmn9yZITU+LgugPYwKGyDvaUFz507mkD86VPUZBLH0aNFSeLPnjGd83YQnU48t29jaWpi8sAB1Hi8KOb/R0ne86gQYvO1a6Q+fyYWDKIuLCB7PPjevMlLlPn5k/CRI2TC4XwFScLi85GemNAVNwQoZd6BASSnEyUSIfn+PZEbN1CjUaMwcwBmISqxwkdp0SFc7a9VJeIlAdYKQi+noVClLTHajOFdWUk1zMSuOvnf/j3/D4grdPnVbpURAAAAAElFTkSuQmCC">
@@ -3016,6 +3016,20 @@
         gotItItem = null;
         renderAll();
       }
+    });
+
+    // 防止快速連點觸發雙擊放大（iOS）
+    ["numpadOverlay", "gotItOverlay"].forEach(id => {
+      let lastTap = 0;
+      document.getElementById(id).addEventListener("touchend", e => {
+        const now = Date.now();
+        if (now - lastTap <= 350) {
+          e.preventDefault();
+          const b = e.target.closest("button");
+          if (b) b.click();
+        }
+        lastTap = now;
+      }, { passive: false });
     });
 
     // 攔截單價欄位點擊，改用數字盤
