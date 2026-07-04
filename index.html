@@ -2686,6 +2686,11 @@
       const added = imported.filter(o => !existing.has(keyOf(o)));
       added.forEach(order => {
         order.seq = nextSeq++;
+        // 沒帶日期的新單，歸到目前正在看的批次（跟手動加單一致），才不會被批次篩選藏住
+        if ((!order.date || order.batch === "無日期") && activeBatch !== "all") {
+          order.date = activeBatch;
+          order.batch = activeBatch;
+        }
         state.orders.push(order);
         const purchase = purchaseFor(order.item, order.qty, order.area);
         if (order.price && !purchase.price) purchase.price = order.price;
