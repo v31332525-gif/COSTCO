@@ -1639,6 +1639,19 @@
     </div>
   </div>
 
+  <!-- 匯入方式選擇 -->
+  <div class="numpad-overlay hidden" id="importChoice">
+    <div class="numpad-box">
+      <div class="numpad-title">要怎麼匯入？</div>
+      <div style="text-align:center;color:var(--muted);font-weight:700;font-size:14px;margin-top:4px">目前已有 <b id="importChoiceCount">0</b> 筆訂單</div>
+      <div style="display:grid;gap:10px;margin-top:14px">
+        <button class="np np-ok" data-import-act="merge" style="padding:14px;font-size:15px">✅ 合併新增<br><span style="font-size:12px;font-weight:600">只加入新的，保留現有進度（推薦）</span></button>
+        <button class="np" data-import-act="replace" style="padding:14px;font-size:15px;background:var(--danger);color:#fff">⚠️ 整份覆蓋<br><span style="font-size:12px;font-weight:600">刪除全部訂單與進度，重新開始</span></button>
+        <button class="np np-cancel" data-import-act="cancel" style="padding:12px">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 數字盤 -->
   <div class="numpad-overlay hidden" id="numpadOverlay">
     <div class="numpad-box">
@@ -2843,26 +2856,30 @@
       });
     });
 
-    document.getElementById("importPaste").addEventListener("click", () => {
+    function doImport(mode) {
       const textarea = document.getElementById("pasteImport");
-      let mode = "replace";
-      if (state.orders.length) {
-        if (confirm("目前已有 " + state.orders.length + " 筆訂單。\n\n✅ 按「確定」＝合併匯入：只加入新的訂單，現有訂單和採買進度全部保留（推薦）\n❌ 按「取消」＝其他選項")) {
-          mode = "merge";
-        } else if (confirm("⚠️ 要整份覆蓋嗎？\n\n這會刪除所有現有訂單，並清空已輸入的價格與已拿到狀態！")) {
-          mode = "replace";
-        } else {
-          textarea.value = "已取消匯入";
-          return;
-        }
-      }
       const count = importRowsFromText(textarea.value, mode);
       if (mode === "merge") {
-        textarea.value = count ? `已合併匯入 ${count} 筆新訂單（原有資料保留）` : "沒有新的訂單（貼上的內容都已存在），或沒有讀到資料";
+        textarea.value = count ? `已合併匯入 ${count} 筆新訂單（原有資料保留）` : "沒有新的訂單（可能貼上內容已存在，或忘了連同標題列一起貼）";
       } else {
-        textarea.value = count ? `已匯入 ${count} 筆資料` : "沒有讀到可匯入的資料，請確認有貼上標題列";
+        textarea.value = count ? `已匯入 ${count} 筆資料` : "沒有讀到可匯入的資料，請確認有連同標題列一起貼上";
       }
+      document.getElementById("importChoice").classList.add("hidden");
       renderAll();
+    }
+
+    document.getElementById("importPaste").addEventListener("click", () => {
+      if (!state.orders.length) { doImport("replace"); return; }
+      document.getElementById("importChoiceCount").textContent = state.orders.length;
+      document.getElementById("importChoice").classList.remove("hidden");
+    });
+
+    document.getElementById("importChoice").addEventListener("click", event => {
+      const act = event.target.dataset.importAct;
+      if (!act) { if (event.target.id === "importChoice") document.getElementById("importChoice").classList.add("hidden"); return; }
+      if (act === "cancel") { document.getElementById("importChoice").classList.add("hidden"); return; }
+      if (act === "replace" && !confirm("確定要整份覆蓋嗎？這會刪除全部現有訂單與採買進度！")) return;
+      doImport(act);
     });
 
     document.getElementById("exportCsv").addEventListener("click", exportCsv);
