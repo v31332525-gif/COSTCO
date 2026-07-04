@@ -1702,6 +1702,7 @@
             <h3>💬 官方 LINE 個別通知</h3>
             <p class="notify-desc">每位客人一則，含總金額，點各自的複製按鈕傳送</p>
           </div>
+          <input type="search" id="lineMsgSearch" placeholder="🔍 搜尋客人名稱" style="width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;padding:0 12px;margin-bottom:8px;font-size:14px;background:white">
           <div class="split-list" id="lineMsgList"></div>
         </div>
 
@@ -1709,6 +1710,9 @@
         <div style="margin:16px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
           <button id="copyExcelBtn" style="min-height:40px;padding:0 14px;border-radius:8px;background:#1d6f42;color:white;font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px">
             📊 複製到 Excel
+          </button>
+          <button id="exportExcelBtn" style="min-height:40px;padding:0 14px;border-radius:8px;background:#0b5cab;color:white;font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px">
+            ⬇️ 下載紀錄檔
           </button>
         </div>
         <div class="split-list" id="splitList" style="display:none"></div>
@@ -1954,6 +1958,9 @@
 
       // 歸檔
       archiveCurrentWeek();
+
+      // 歸檔時自動下載本週紀錄檔
+      try { downloadExportCsv(`${new Date().getMonth() + 1}/${new Date().getDate()} 歸檔`); } catch (e) {}
 
       // 歸檔後全部歸零（不自動帶入上週資料）
       state.orders = [];
@@ -2496,6 +2503,8 @@
         }).join("");
       }
 
+      applyLineMsgFilter();
+
       // ── 分帳明細（只顯示有買到的客人）──
       const list = document.getElementById("splitList");
       list.innerHTML = boughtEntries.map(([customer, data]) => {
@@ -2575,15 +2584,16 @@
       }
 
       let grandTotal = 0;
-      state.customerStatus = state.customerStatus || {};
-      const _cs = state.customerStatus;
+      const _vs = currentViewState();
+      _vs.customerStatus = _vs.customerStatus || {};
+      const _cs = _vs.customerStatus;
       const unpaidN = entries.filter(([c]) => !(_cs[c] || {}).paid).length;
       const unpickedN = entries.filter(([c]) => !(_cs[c] || {}).picked).length;
       const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人</div>`;
       const __built = entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
         grandTotal += total;
-        const cs = (state.customerStatus || {})[customer] || {};
+        const cs = _cs[customer] || {};
         const detailRows = data.items.map(it => {
           const unit = it.qty ? Math.round(it.amount / it.qty) : it.amount;
           const unitFee = it.qty ? Math.round(it.fee / it.qty) : it.fee;
@@ -2604,6 +2614,7 @@
           <div class="collect-status-row">
             ${cs.settledDate ? `<span class="settled-badge">✅ ${cs.settledDate} 結清</span>` : ""}
             ${cs.paid && cs.paidAt ? `<span class="paid-badge">💰 收款 ${cs.paidAt}</span>` : ""}
+            ${cs.picked && cs.pickedAt ? `<span class="paid-badge">📦 取貨 ${cs.pickedAt}</span>` : ""}
             <button class="cstat ${cs.paid ? 'on' : ''}" data-pay="${escapeHtml(customer)}">${cs.paid ? '✅ 已付款' : '💰 未付款'}</button>
             <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
           </div>
@@ -2642,21 +2653,29 @@
       const payBtn = event.target.closest("[data-pay]");
       const pickBtn = event.target.closest("[data-pick]");
       if (!payBtn && !pickBtn) return;
-      state.customerStatus = state.customerStatus || {};
       const name = (payBtn || pickBtn).dataset[payBtn ? "pay" : "pick"];
-      state.customerStatus[name] = state.customerStatus[name] || {};
-      if (payBtn) {
-        state.customerStatus[name].paid = !state.customerStatus[name].paid;
-        if (state.customerStatus[name].paid) { const _pd = new Date(); state.customerStatus[name].paidAt = (_pd.getMonth() + 1) + "/" + _pd.getDate() + " " + String(_pd.getHours()).padStart(2, "0") + ":" + String(_pd.getMinutes()).padStart(2, "0"); }
-        else state.customerStatus[name].paidAt = null;
-      } else {
-        state.customerStatus[name].picked = !state.customerStatus[name].picked;
+      // 在哪一週的畫面按，就寫進哪一週：歷史週寫回歸檔，不會寫進本週
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
       }
-      const _st = state.customerStatus[name];
-      if (_st.paid && _st.picked) { if (!_st.settledDate) { const _d = new Date(); _st.settledDate = (_d.getMonth() + 1) + "/" + _d.getDate(); } }
+      _target.customerStatus = _target.customerStatus || {};
+      const _st = _target.customerStatus[name] = _target.customerStatus[name] || {};
+      const _fmtD = d => (d.getMonth() + 1) + "/" + d.getDate();
+      const _fmtDT = d => _fmtD(d) + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      if (payBtn) {
+        _st.paid = !_st.paid;
+        _st.paidAt = _st.paid ? _fmtDT(new Date()) : null;
+      } else {
+        _st.picked = !_st.picked;
+        _st.pickedAt = _st.picked ? _fmtDT(new Date()) : null;
+      }
+      if (_st.paid && _st.picked) { if (!_st.settledDate) _st.settledDate = _fmtD(new Date()); }
       else _st.settledDate = null;
+      if (_archives) saveArchives(_archives); else saveState();
       renderCollect();
-      saveState();
     });
 
     // 已結清區塊展開/收合
@@ -3499,6 +3518,76 @@
     window.addEventListener("fb-error", () => setSync("error"));
     window.addEventListener("offline", () => setSync("offline"));
     window.addEventListener("online",  () => setSync("live"));
+
+    // ── LINE 通知搜尋 ──
+    function applyLineMsgFilter() {
+      const inp = document.getElementById("lineMsgSearch");
+      if (!inp) return;
+      const q = inp.value.trim().toLowerCase();
+      Array.from(document.getElementById("lineMsgList").children).forEach(el => {
+        el.style.display = !q || el.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    }
+    document.getElementById("lineMsgSearch").addEventListener("input", applyLineMsgFilter);
+
+    // ── 匯出紀錄檔（CSV，Excel 可開啟）──
+    function buildExportRows() {
+      const vs = currentViewState();
+      const csAll = vs.customerStatus || {};
+      const customerMap = new Map();
+      groupedItems().forEach(item => {
+        const purchase = purchaseFor(item.item, item.totalQty);
+        const unitPrice = Number(purchase.price || 0);
+        const isMissing = purchase.status === "missing";
+        const itemFee = calcItemFee(purchase, unitPrice);
+        const isPromo = purchase.feeOverride === "normal" ? "" :
+          (purchase.bulky || /冷藏|冷凍/.test(itemArea(item))) ? "特價" : "";
+        allocationFor(item).forEach(order => {
+          const qty = order.assignedQty;
+          if (qty <= 0) return;
+          const amount = isMissing ? 0 : qty * unitPrice;
+          const fee = isMissing ? 0 : itemFee * qty;
+          if (!customerMap.has(order.customer)) customerMap.set(order.customer, []);
+          customerMap.get(order.customer).push({
+            date: order.date || "", area: order.area || itemArea(item) || "", source: order.source || "",
+            item: order.item, qty, isPromo, unitPrice, amount, fee, subtotal: amount + fee,
+            missing: isMissing
+          });
+        });
+      });
+      const rows = [["日期", "姓名", "品類", "來源", "拿", "編號-商品簡稱", "數量", "特價", "售價", "合計", "代", "小計", "付款", "取貨"]];
+      customerMap.forEach((lines, customer) => {
+        const cs = csAll[customer] || {};
+        lines.forEach(r => {
+          rows.push([r.date, customer, r.area, r.source, r.missing ? "缺貨" : "", r.item, r.qty, r.isPromo, r.unitPrice || "", r.amount || "", r.fee || "", r.subtotal || "", "", ""]);
+        });
+        const totalAmount = lines.reduce((s, r) => s + r.amount, 0);
+        const totalFee = lines.reduce((s, r) => s + r.fee, 0);
+        rows.push(["", customer + " 小計", "", "", "", "", "", "", "", totalAmount, totalFee, totalAmount + totalFee,
+          cs.paid ? "已付款 " + (cs.paidAt || "") : "未付款",
+          cs.picked ? "已取貨 " + (cs.pickedAt || cs.settledDate || "") : "未取貨"]);
+        rows.push([]);
+      });
+      return rows;
+    }
+    function downloadExportCsv(labelText) {
+      const rows = buildExportRows();
+      if (rows.length <= 1) { alert("還沒有資料可以匯出"); return; }
+      const csv = rows.map(row => (row.length ? row : [""]).map(cell => {
+        const s = String(cell == null ? "" : cell);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(",")).join("\r\n");
+      const label = labelText || (isViewingArchive() ? ((loadArchives()[viewingArchiveIndex] || {}).label || "歸檔") : "本週");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "好市多代購_" + label.replace(/[\/\s:]/g, "-") + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    }
+    document.getElementById("exportExcelBtn").addEventListener("click", () => downloadExportCsv());
 
     // ── 複製到 Excel ──
     document.getElementById("copyExcelBtn").addEventListener("click", async () => {
