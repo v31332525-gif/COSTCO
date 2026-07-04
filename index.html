@@ -1354,13 +1354,14 @@
 
     .card-modal-close {
       width: 100%;
-      padding: 10px;
-      margin-bottom: 10px;
+      padding: 12px;
+      margin-top: 10px;
       border-radius: 10px;
-      background: var(--panel);
-      border: 1px solid var(--line);
+      background: var(--accent);
+      color: #fff;
+      border: 0;
       font-weight: 900;
-      font-size: 15px;
+      font-size: 16px;
     }
 
   </style>
@@ -1449,8 +1450,8 @@
         <div class="compact-list" id="compactList"></div>
         <div class="card-modal hidden" id="cardModal">
           <div class="card-modal-box">
-            <button class="card-modal-close" id="cardModalClose" type="button">✕ 關閉</button>
             <div id="cardModalBox"></div>
+            <button class="card-modal-close" id="cardModalClose" type="button">✔ 確認</button>
           </div>
         </div>
       </section>
@@ -3107,6 +3108,7 @@
         overlay.classList.add("hidden");
         document.body.style.overflow = "";
         gotItItem = null;
+        if (modalItem) modalItem = null;
         renderAll();
       }
     });
