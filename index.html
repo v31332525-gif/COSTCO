@@ -1657,15 +1657,14 @@
           </div>
         </div>
 
-        <!-- 開新週 -->
-        <div style="margin-top:32px;padding-top:20px;border-top:2px dashed var(--line)">
-          <div style="font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:700">📅 本週結束後</div>
-          <button class="new-week-btn" id="newWeekBtn">🆕 歸檔本週，開始新的一週</button>
-        </div>
 
       </section>
 
       <section class="view" id="splitView">
+        <!-- 開新週 -->
+        <div style="margin-bottom:14px">
+          <button class="new-week-btn" id="newWeekBtn">🆕 歸檔本週，開始新的一週</button>
+        </div>
         <!-- 收款總覽 -->
         <div class="collect-panel">
           <button class="collect-toggle-btn" id="collectToggleBtn">
@@ -1708,12 +1707,11 @@
 
         <!-- 複製到 Excel -->
         <div style="margin:16px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-          <h3 style="margin:0;font-size:15px;color:var(--muted)">📋 分帳明細</h3>
           <button id="copyExcelBtn" style="min-height:40px;padding:0 14px;border-radius:8px;background:#1d6f42;color:white;font-weight:800;font-size:13px;display:flex;align-items:center;gap:6px">
             📊 複製到 Excel
           </button>
         </div>
-        <div class="split-list" id="splitList"></div>
+        <div class="split-list" id="splitList" style="display:none"></div>
       </section>
     </main>
 
@@ -1952,23 +1950,15 @@
 
     document.getElementById("newWeekBtn").addEventListener("click", () => {
       const orderCount = state.orders.length;
-      if (!confirm(`確定要歸檔本週（共 ${orderCount} 筆訂單）並開始新的一週嗎？\n\n歸檔後可在頂部切換查看，本週資料不會消失。`)) return;
+      if (!confirm(`確定要歸檔本週（共 ${orderCount} 筆訂單）並開始新的一週嗎？\n\n歸檔後本週會全部清空歸零（未結清客人不會帶入新週），舊資料可在頂部週次列查看。`)) return;
 
       // 歸檔
       archiveCurrentWeek();
 
-      // 保留未結清（未付款或未取貨）的客人到新的一週
-      const _cs = state.customerStatus || {};
-      const _settled = n => { const s = _cs[n]; return s && s.paid && s.picked; };
-      const _carryOrders = state.orders.filter(o => !_settled(o.customer)).map(o => ({ ...o, batch: "上週未結清", date: "上週未結清" }));
-      const _carryItems = new Set(_carryOrders.map(o => o.item));
-      const _newPurchases = {};
-      Object.keys(state.purchases || {}).forEach(k => { if (_carryItems.has(k)) _newPurchases[k] = state.purchases[k]; });
-      const _newStatus = {};
-      Object.keys(_cs).forEach(n => { if (!_settled(n)) _newStatus[n] = _cs[n]; });
-      state.orders = _carryOrders;
-      state.purchases = _newPurchases;
-      state.customerStatus = _newStatus;
+      // 歸檔後全部歸零（不自動帶入上週資料）
+      state.orders = [];
+      state.purchases = {};
+      state.customerStatus = {};
       state.cancelledOrders = [];
       state.receiptTotal = "";
       state.receiptRows = [];
