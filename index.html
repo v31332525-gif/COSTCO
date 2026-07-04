@@ -1881,7 +1881,12 @@
     });
 
     function normalizeCustomer(name) {
-      return String(name || "").trim().replace(/＠/g, "@");
+      return String(name || "").normalize("NFKC").replace(/＠/g, "@").replace(/\s+/g, " ").trim();
+    }
+
+    function normalizeItemName(item) {
+      // NFKC：全形數字/英文/符號轉半形；收整空白。不會合併不同編號的商品。
+      return String(item || "").normalize("NFKC").replace(/\s+/g, " ").trim();
     }
 
     function normalizeOrder(order, index) {
@@ -1893,7 +1898,7 @@
         customer: normalizeCustomer(order.customer),
         source: order.source || "試算表匯入",
         area: order.area || "待定位",
-        item: order.item || "",
+        item: normalizeItemName(order.item),
         qty: Number(order.qty || 1),
         note: order.note || "",
         price: Number(order.price || 0),
@@ -3005,7 +3010,7 @@
         customer: normalizeCustomer(customerEl.value),
         source: document.getElementById("orderSource").value,
         area: (function(){ const sel = document.getElementById("productArea").value; if (sel && sel !== "待定位") return sel; return guessAreaFromName(productEl.value.trim()) || sel; })(),
-        item: productEl.value.trim(),
+        item: normalizeItemName(productEl.value),
         qty: Number(document.getElementById("quantity").value || 1),
         note: document.getElementById("orderNote").value.trim()
       };
