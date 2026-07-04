@@ -1418,6 +1418,13 @@
       color: var(--ok);
     }
 
+    .paid-badge {
+      flex-basis: 100%;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
   </style>
 </head>
 <body>
@@ -2568,6 +2575,7 @@
           </div>
           <div class="collect-status-row">
             ${cs.settledDate ? `<span class="settled-badge">✅ ${cs.settledDate} 結清</span>` : ""}
+            ${cs.paid && cs.paidAt ? `<span class="paid-badge">💰 收款 ${cs.paidAt}</span>` : ""}
             <button class="cstat ${cs.paid ? 'on' : ''}" data-pay="${escapeHtml(customer)}">${cs.paid ? '✅ 已付款' : '💰 未付款'}</button>
             <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
           </div>
@@ -2611,8 +2619,13 @@
       state.customerStatus = state.customerStatus || {};
       const name = (payBtn || pickBtn).dataset[payBtn ? "pay" : "pick"];
       state.customerStatus[name] = state.customerStatus[name] || {};
-      if (payBtn) state.customerStatus[name].paid = !state.customerStatus[name].paid;
-      else state.customerStatus[name].picked = !state.customerStatus[name].picked;
+      if (payBtn) {
+        state.customerStatus[name].paid = !state.customerStatus[name].paid;
+        if (state.customerStatus[name].paid) { const _pd = new Date(); state.customerStatus[name].paidAt = (_pd.getMonth() + 1) + "/" + _pd.getDate() + " " + String(_pd.getHours()).padStart(2, "0") + ":" + String(_pd.getMinutes()).padStart(2, "0"); }
+        else state.customerStatus[name].paidAt = null;
+      } else {
+        state.customerStatus[name].picked = !state.customerStatus[name].picked;
+      }
       const _st = state.customerStatus[name];
       if (_st.paid && _st.picked) { if (!_st.settledDate) { const _d = new Date(); _st.settledDate = (_d.getMonth() + 1) + "/" + _d.getDate(); } }
       else _st.settledDate = null;
