@@ -1880,13 +1880,17 @@
       alert("✅ 已歸檔！可以從頂部的週次列切回查看。");
     });
 
+    function normalizeCustomer(name) {
+      return String(name || "").trim().replace(/＠/g, "@");
+    }
+
     function normalizeOrder(order, index) {
       const date = normalizeDateValue(order.date || "");
       return {
         seq: Number(order.seq || index + 1),
         date,
         batch: order.batch || batchFromDate(date),
-        customer: order.customer || "",
+        customer: normalizeCustomer(order.customer),
         source: order.source || "試算表匯入",
         area: order.area || "待定位",
         item: order.item || "",
@@ -2998,7 +3002,7 @@
         seq: Math.max(0, ...state.orders.map(order => Number(order.seq || 0))) + 1,
         date: activeBatch === "all" ? "" : activeBatch,
         batch: activeBatch === "all" ? "無日期" : activeBatch,
-        customer: customerEl.value.trim(),
+        customer: normalizeCustomer(customerEl.value),
         source: document.getElementById("orderSource").value,
         area: (function(){ const sel = document.getElementById("productArea").value; if (sel && sel !== "待定位") return sel; return guessAreaFromName(productEl.value.trim()) || sel; })(),
         item: productEl.value.trim(),
