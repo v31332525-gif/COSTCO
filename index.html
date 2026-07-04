@@ -1396,6 +1396,28 @@
       margin-bottom: 8px;
     }
 
+    .settled-toggle {
+      padding: 10px 14px;
+      margin-top: 10px;
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--muted);
+      background: #f0eee8;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .settled-box.hidden {
+      display: none;
+    }
+
+    .settled-badge {
+      flex-basis: 100%;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--ok);
+    }
+
   </style>
 </head>
 <body>
@@ -1894,12 +1916,22 @@
       // 歸檔
       archiveCurrentWeek();
 
-      // 清空本週
-      state.orders = [];
-      state.purchases = {};
+      // 保留未結清（未付款或未取貨）的客人到新的一週
+      const _cs = state.customerStatus || {};
+      const _settled = n => { const s = _cs[n]; return s && s.paid && s.picked; };
+      const _carryOrders = state.orders.filter(o => !_settled(o.customer)).map(o => ({ ...o, batch: "上週未結清", date: "上週未結清" }));
+      const _carryItems = new Set(_carryOrders.map(o => o.item));
+      const _newPurchases = {};
+      Object.keys(state.purchases || {}).forEach(k => { if (_carryItems.has(k)) _newPurchases[k] = state.purchases[k]; });
+      const _newStatus = {};
+      Object.keys(_cs).forEach(n => { if (!_settled(n)) _newStatus[n] = _cs[n]; });
+      state.orders = _carryOrders;
+      state.purchases = _newPurchases;
+      state.customerStatus = _newStatus;
       state.cancelledOrders = [];
       state.receiptTotal = "";
       state.receiptRows = [];
+      activeBatch = "all";
       saveState();
 
       // 切回本週視角
@@ -2517,7 +2549,7 @@
       const unpaidN = entries.filter(([c]) => !(_cs[c] || {}).paid).length;
       const unpickedN = entries.filter(([c]) => !(_cs[c] || {}).picked).length;
       const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人</div>`;
-      collectRows.innerHTML = statusSummary + entries.map(([customer, data], idx) => {
+      const __built = entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
         grandTotal += total;
         const cs = (state.customerStatus || {})[customer] || {};
@@ -2527,7 +2559,7 @@
             <span class="collect-detail-amount">${money(it.amount)}</span>
             <span class="collect-detail-fee">+${money(it.fee)}</span>
           </div>`).join("");
-        return `<div class="collect-row">
+        const __rowHtml = `<div class="collect-row">
           <div class="collect-row-header" data-collect-idx="${idx}">
             <span class="collect-name">${escapeHtml(customer)} <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span></span>
             <span class="collect-goods">${money(data.goods)}</span>
@@ -2535,6 +2567,7 @@
             <span class="collect-total">${money(total)}</span>
           </div>
           <div class="collect-status-row">
+            ${cs.settledDate ? `<span class="settled-badge">✅ ${cs.settledDate} 結清</span>` : ""}
             <button class="cstat ${cs.paid ? 'on' : ''}" data-pay="${escapeHtml(customer)}">${cs.paid ? '✅ 已付款' : '💰 未付款'}</button>
             <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
           </div>
@@ -2545,7 +2578,14 @@
             ${detailRows}
           </div>
         </div>`;
-      }).join("");
+        return { settled: !!(cs.paid && cs.picked), html: __rowHtml };
+      });
+      const __out = __built.filter(b => !b.settled).map(b => b.html).join("");
+      const __done = __built.filter(b => b.settled);
+      const __doneHtml = __done.length
+        ? `<div class="settled-toggle" id="settledToggle">✅ 已結清（${__done.length}）<span id="settledArrow">▶</span></div><div class="settled-box hidden" id="settledBox">${__done.map(b => b.html).join("")}</div>`
+        : "";
+      collectRows.innerHTML = statusSummary + (__out || `<div class="empty" style="padding:10px 14px">目前沒有未結清的客人 🎉</div>`) + __doneHtml;
 
       collectCount.textContent = entries.length;
       collectGrandTotal.textContent = money(grandTotal);
@@ -2573,8 +2613,19 @@
       state.customerStatus[name] = state.customerStatus[name] || {};
       if (payBtn) state.customerStatus[name].paid = !state.customerStatus[name].paid;
       else state.customerStatus[name].picked = !state.customerStatus[name].picked;
+      const _st = state.customerStatus[name];
+      if (_st.paid && _st.picked) { if (!_st.settledDate) { const _d = new Date(); _st.settledDate = (_d.getMonth() + 1) + "/" + _d.getDate(); } }
+      else _st.settledDate = null;
       renderCollect();
       saveState();
+    });
+
+    // 已結清區塊展開/收合
+    document.getElementById("collectRows").addEventListener("click", event => {
+      if (!event.target.closest("#settledToggle")) return;
+      const box = document.getElementById("settledBox");
+      const arrow = document.getElementById("settledArrow");
+      if (box) { const nowHidden = box.classList.toggle("hidden"); if (arrow) arrow.textContent = nowHidden ? "▶" : "▼"; }
     });
 
     // Collect toggle
