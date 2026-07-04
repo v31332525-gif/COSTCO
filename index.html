@@ -2620,7 +2620,7 @@
       return key ? map[key] : raw || "待定位";
     }
 
-    function importRowsFromText(text) {
+    function importRowsFromText(text, mode) {
       const table = parseTableText(text);
       if (table.length < 2) return 0;
       const headers = table[0];
@@ -2654,16 +2654,31 @@
         }, rowIndex);
       }).filter(order => order.customer && order.item);
 
-      state.orders = imported;
-      activeBatch = "all";
-      state.purchases = {};
-      imported.forEach(order => {
+      if (mode === "replace") {
+        state.orders = imported;
+        activeBatch = "all";
+        state.purchases = {};
+        imported.forEach(order => {
+          const purchase = purchaseFor(order.item, order.qty, order.area);
+          if (order.price) purchase.price = order.price;
+          if (order.limit) purchase.limit = order.limit;
+        });
+        state.receiptTotal = "";
+        return imported.length;
+      }
+      // 合併模式：只新增新的列，既有訂單與採買進度不動
+      const keyOf = o => [o.customer, o.item, o.date].join("|");
+      const existing = new Set(state.orders.map(keyOf));
+      let nextSeq = Math.max(0, ...state.orders.map(o => Number(o.seq || 0))) + 1;
+      const added = imported.filter(o => !existing.has(keyOf(o)));
+      added.forEach(order => {
+        order.seq = nextSeq++;
+        state.orders.push(order);
         const purchase = purchaseFor(order.item, order.qty, order.area);
-        if (order.price) purchase.price = order.price;
-        if (order.limit) purchase.limit = order.limit;
+        if (order.price && !purchase.price) purchase.price = order.price;
+        if (order.limit && !purchase.limit) purchase.limit = order.limit;
       });
-      state.receiptTotal = "";
-      return imported.length;
+      return added.length;
     }
 
     function csvCell(value) {
@@ -2830,8 +2845,23 @@
 
     document.getElementById("importPaste").addEventListener("click", () => {
       const textarea = document.getElementById("pasteImport");
-      const count = importRowsFromText(textarea.value);
-      textarea.value = count ? `已匯入 ${count} 筆資料` : "沒有讀到可匯入的資料，請確認有貼上標題列";
+      let mode = "replace";
+      if (state.orders.length) {
+        if (confirm("目前已有 " + state.orders.length + " 筆訂單。\n\n✅ 按「確定」＝合併匯入：只加入新的訂單，現有訂單和採買進度全部保留（推薦）\n❌ 按「取消」＝其他選項")) {
+          mode = "merge";
+        } else if (confirm("⚠️ 要整份覆蓋嗎？\n\n這會刪除所有現有訂單，並清空已輸入的價格與已拿到狀態！")) {
+          mode = "replace";
+        } else {
+          textarea.value = "已取消匯入";
+          return;
+        }
+      }
+      const count = importRowsFromText(textarea.value, mode);
+      if (mode === "merge") {
+        textarea.value = count ? `已合併匯入 ${count} 筆新訂單（原有資料保留）` : "沒有新的訂單（貼上的內容都已存在），或沒有讀到資料";
+      } else {
+        textarea.value = count ? `已匯入 ${count} 筆資料` : "沒有讀到可匯入的資料，請確認有貼上標題列";
+      }
       renderAll();
     });
 
