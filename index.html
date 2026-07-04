@@ -1364,6 +1364,38 @@
       font-size: 16px;
     }
 
+    .collect-status-row {
+      display: flex;
+      gap: 8px;
+      padding: 2px 14px 12px;
+    }
+
+    .collect-status-row .cstat {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .collect-status-row .cstat.on {
+      background: var(--ok);
+      color: #fff;
+      border-color: var(--ok);
+    }
+
+    .collect-status-summary {
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--warn);
+      background: #fff8ec;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
   </style>
 </head>
 <body>
@@ -2480,9 +2512,15 @@
       }
 
       let grandTotal = 0;
-      collectRows.innerHTML = entries.map(([customer, data], idx) => {
+      state.customerStatus = state.customerStatus || {};
+      const _cs = state.customerStatus;
+      const unpaidN = entries.filter(([c]) => !(_cs[c] || {}).paid).length;
+      const unpickedN = entries.filter(([c]) => !(_cs[c] || {}).picked).length;
+      const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人</div>`;
+      collectRows.innerHTML = statusSummary + entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
         grandTotal += total;
+        const cs = (state.customerStatus || {})[customer] || {};
         const detailRows = data.items.map(it => `
           <div class="collect-detail-item">
             <span class="collect-detail-name">${escapeHtml(it.name.replace(/^\d+\s*/, ""))} ×${it.qty}</span>
@@ -2495,6 +2533,10 @@
             <span class="collect-goods">${money(data.goods)}</span>
             <span class="collect-fee">+${money(data.fee)}</span>
             <span class="collect-total">${money(total)}</span>
+          </div>
+          <div class="collect-status-row">
+            <button class="cstat ${cs.paid ? 'on' : ''}" data-pay="${escapeHtml(customer)}">${cs.paid ? '✅ 已付款' : '💰 未付款'}</button>
+            <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
           </div>
           <div class="collect-detail" id="collect-detail-${idx}">
             <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;padding:4px 0 6px;font-size:11px;font-weight:800;color:var(--muted)">
@@ -2519,6 +2561,20 @@
       const isOpen = detail.classList.toggle("open");
       const arrow = header.querySelector("span span");
       if (arrow) arrow.textContent = isOpen ? "▼ 明細" : "▶ 明細";
+    });
+
+    // 已付款 / 已取貨 開關
+    document.getElementById("collectRows").addEventListener("click", event => {
+      const payBtn = event.target.closest("[data-pay]");
+      const pickBtn = event.target.closest("[data-pick]");
+      if (!payBtn && !pickBtn) return;
+      state.customerStatus = state.customerStatus || {};
+      const name = (payBtn || pickBtn).dataset[payBtn ? "pay" : "pick"];
+      state.customerStatus[name] = state.customerStatus[name] || {};
+      if (payBtn) state.customerStatus[name].paid = !state.customerStatus[name].paid;
+      else state.customerStatus[name].picked = !state.customerStatus[name].picked;
+      renderCollect();
+      saveState();
     });
 
     // Collect toggle
