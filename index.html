@@ -1315,6 +1315,17 @@
       font-weight: 800;
       margin-top: 8px;
     }
+    .numpad-qty {
+      margin-top: 6px;
+      text-align: center;
+      color: var(--warn);
+      font-weight: 900;
+      font-size: 17px;
+    }
+
+    .numpad-qty.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -1578,12 +1589,9 @@
   <!-- 已拿到詢問 -->
   <div class="numpad-overlay hidden" id="gotItOverlay">
     <div class="numpad-box">
-      <div class="numpad-title">這樣商品拿到了嗎？</div>
+      <div class="numpad-title" id="gotItTitle">拿到了嗎？</div>
       <div class="numpad-display"><span id="gotItName" style="font-size:17px"></span></div>
-      <div class="numpad-grid" style="grid-template-columns:1fr 1fr">
-        <button class="np np-ok" data-gotit="yes" style="grid-column:auto">✅ 已拿到</button>
-        <button class="np np-cancel" data-gotit="no" style="grid-column:auto">還沒</button>
-      </div>
+      <div class="numpad-grid" id="gotItBtns" style="grid-template-columns:1fr 1fr"></div>
     </div>
   </div>
 
@@ -1591,6 +1599,7 @@
   <div class="numpad-overlay hidden" id="numpadOverlay">
     <div class="numpad-box">
       <div class="numpad-title" id="numpadTitle">輸入單價</div>
+      <div class="numpad-qty hidden" id="numpadQty"></div>
       <div class="numpad-display">
         <span id="numpadDisplay" class="placeholder">$0</span>
       </div>
@@ -2016,6 +2025,7 @@
                 <h2 class="item-title">${escapeHtml(item.item)}</h2>
                 <div class="area-line">
                   <span class="area-chip">${escapeHtml(area)}</span>
+                  <a class="area-chip" style="text-decoration:none" href="${photoSearchUrl(item.item)}" target="_blank" rel="noopener">📷 查照片</a>
                   ${item.areas.length > 1 ? `<span class="area-chip">多區可能</span>` : ""}
                   <span class="area-chip">本週${escapeHtml(state.currentBuyer || "妹妹")}買</span>
                   ${allocation.map(row => `<span class="buyer ${row.state === "assigned" ? "assigned" : row.state === "waiting" ? "waiting" : row.state === "missed" ? "missed" : ""}">#${row.seq} ${escapeHtml(row.customer)} x${row.qty}</span>`).join("")}
@@ -2027,7 +2037,7 @@
               <label>需求數量<input value="${item.totalQty}" readonly></label>
               <label>實買數量<input data-field="boughtQty" inputmode="numeric" type="number" min="0" value="${purchase.boughtQty}"></label>
               <label>限購數<input data-field="limit" inputmode="numeric" type="number" min="0" placeholder="不限" value="${purchase.limit || ""}"></label>
-              <label>單價<input data-field="price" inputmode="numeric" type="number" min="0" value="${purchase.price}"></label>
+              <label>單價<input data-field="price" data-qty="${item.totalQty}" inputmode="numeric" type="number" min="0" value="${purchase.price}"></label>
               <label>現場位置
                 <select data-field="area">
                   ${areaOptions.map(option => `<option ${area === option ? "selected" : ""}>${option}</option>`).join("")}
@@ -2466,6 +2476,13 @@
       const add = (5 - day + 7) % 7;
       date.setDate(date.getDate() + add);
       return date;
+    }
+
+    function photoSearchUrl(name) {
+      const s = String(name || "");
+      const m = s.match(/\d{5,7}/);
+      const clean = s.replace(/\d{5,7}/, "").replace(/[+＋]\d+/g, "").trim().slice(0, 15);
+      return "https://www.google.com/search?udm=2&q=" + encodeURIComponent("好市多 " + (m ? m[0] + " " : "") + clean);
     }
 
     function escapeHtml(value) {
@@ -2945,6 +2962,7 @@
     // ── 數字盤邏輯 ──
     let numpadTarget = null;
     let gotItItem = null;
+    let gotItNeed = 1;
     let numpadValue = "";
 
     function openNumpad(input) {
@@ -2954,6 +2972,10 @@
       const label = input.closest("label");
       const title = label ? label.childNodes[0].textContent.trim() : "輸入單價";
       document.getElementById("numpadTitle").textContent = title + "（單位：元）";
+      const qtyEl = document.getElementById("numpadQty");
+      const needQty = Number(input.dataset.qty || 0);
+      if (needQty > 1) { qtyEl.textContent = "⚠️ 這項要拿 " + needQty + " 件！"; qtyEl.classList.remove("hidden"); }
+      else qtyEl.classList.add("hidden");
       document.getElementById("numpadOverlay").classList.remove("hidden");
       document.body.style.overflow = "hidden";
     }
@@ -2993,7 +3015,19 @@
           const card = target.closest("[data-item]");
           if (card && purchaseFor(card.dataset.item).status !== "done") {
             gotItItem = card.dataset.item;
+            gotItNeed = Math.max(1, Number(target.dataset.qty || 1));
             document.getElementById("gotItName").textContent = gotItItem;
+            document.getElementById("gotItTitle").textContent = gotItNeed > 1 ? "拿到了嗎？共需 " + gotItNeed + " 件！" : "拿到了嗎？";
+            const btns = [];
+            if (gotItNeed === 1) {
+              btns.push('<button class="np np-ok" data-gotqty="1" style="grid-column:auto">✅ 已拿到</button>');
+            } else {
+              for (let q = 1; q <= gotItNeed; q++) btns.push('<button class="np ' + (q === gotItNeed ? "np-ok" : "") + '" data-gotqty="' + q + '" style="grid-column:auto">' + (q === gotItNeed ? "✅ " : "") + q + ' 件</button>');
+            }
+            btns.push('<button class="np np-cancel" data-gotit="no" style="grid-column:auto">還沒</button>');
+            const grid = document.getElementById("gotItBtns");
+            grid.style.gridTemplateColumns = gotItNeed >= 3 ? "1fr 1fr 1fr" : "1fr 1fr";
+            grid.innerHTML = btns.join("");
             document.getElementById("gotItOverlay").classList.remove("hidden");
             document.body.style.overflow = "hidden";
           }
@@ -3018,8 +3052,11 @@
         gotItItem = null;
         return;
       }
-      if (act === "yes") {
-        if (gotItItem) purchaseFor(gotItItem).status = "done";
+      const qty = Number(event.target.dataset.gotqty || 0);
+      if (qty && gotItItem) {
+        const p = purchaseFor(gotItItem);
+        p.boughtQty = qty;
+        p.status = qty >= gotItNeed ? "done" : "partial";
         overlay.classList.add("hidden");
         document.body.style.overflow = "";
         gotItItem = null;
