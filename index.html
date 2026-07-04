@@ -1425,6 +1425,40 @@
       color: var(--accent);
     }
 
+    .cdi {
+      padding: 7px 0;
+      border-top: 1px dashed var(--line);
+      font-size: 13px;
+    }
+
+    .cdi:first-child {
+      border-top: none;
+    }
+
+    .cdi-name {
+      font-weight: 800;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+      margin-bottom: 2px;
+    }
+
+    .cdi-line {
+      color: var(--muted);
+    }
+
+    .cdi-line b {
+      color: var(--ink);
+    }
+
+    .cdi-total {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 2px solid var(--line);
+      font-weight: 800;
+      font-size: 14px;
+      text-align: right;
+    }
+
   </style>
 </head>
 <body>
@@ -2560,12 +2594,16 @@
         const total = data.goods + data.fee;
         grandTotal += total;
         const cs = (state.customerStatus || {})[customer] || {};
-        const detailRows = data.items.map(it => `
-          <div class="collect-detail-item">
-            <span class="collect-detail-name">${escapeHtml(it.name.replace(/^\d+\s*/, ""))} ×${it.qty}</span>
-            <span class="collect-detail-amount">${money(it.amount)}</span>
-            <span class="collect-detail-fee">+${money(it.fee)}</span>
-          </div>`).join("");
+        const detailRows = data.items.map(it => {
+          const unit = it.qty ? Math.round(it.amount / it.qty) : it.amount;
+          const unitFee = it.qty ? Math.round(it.fee / it.qty) : it.fee;
+          return `
+          <div class="cdi">
+            <div class="cdi-name">${escapeHtml(it.name.replace(/^\d+\s*/, ""))}</div>
+            <div class="cdi-line">單價 ${money(unit)} × ${it.qty} ＝ <b>${money(it.amount)}</b></div>
+            ${it.fee ? `<div class="cdi-line">代購費 ${money(unitFee)} × ${it.qty} ＝ <b>${money(it.fee)}</b></div>` : ""}
+          </div>`;
+        }).join("");
         const __rowHtml = `<div class="collect-row">
           <div class="collect-row-header" data-collect-idx="${idx}">
             <span class="collect-name">${escapeHtml(customer)} <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span></span>
@@ -2580,10 +2618,8 @@
             <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
           </div>
           <div class="collect-detail" id="collect-detail-${idx}">
-            <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;padding:4px 0 6px;font-size:11px;font-weight:800;color:var(--muted)">
-              <span>商品</span><span style="text-align:right">金額</span><span style="text-align:right">代購費</span>
-            </div>
             ${detailRows}
+            <div class="cdi-total">商品 ${money(data.goods)} ＋ 代購費 ${money(data.fee)} ＝ 應收 <b>${money(total)}</b></div>
           </div>
         </div>`;
         return { settled: !!(cs.paid && cs.picked), html: __rowHtml };
