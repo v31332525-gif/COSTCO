@@ -1326,6 +1326,43 @@
     .numpad-qty.hidden {
       display: none;
     }
+    .card-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(32,33,36,.45);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px 10px;
+      overflow-y: auto;
+    }
+
+    .card-modal.hidden {
+      display: none;
+    }
+
+    .card-modal-box {
+      width: 100%;
+      max-width: 560px;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      background: var(--bg);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .card-modal-close {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      font-weight: 900;
+      font-size: 15px;
+    }
+
   </style>
 </head>
 <body>
@@ -1410,6 +1447,12 @@
         </div>
         <div class="item-list" id="itemList"></div>
         <div class="compact-list" id="compactList"></div>
+        <div class="card-modal hidden" id="cardModal">
+          <div class="card-modal-box">
+            <button class="card-modal-close" id="cardModalClose" type="button">✕ 關閉</button>
+            <div id="cardModalBox"></div>
+          </div>
+        </div>
       </section>
 
       <section class="view" id="checkoutView">
@@ -1686,6 +1729,7 @@
     let activeArea = "all";
     let activeBatch = "all";
     let displayMode = "card";
+    let modalItem = null;
     let searchText = "";
 
     function loadState() {
@@ -2013,7 +2057,7 @@
       list.classList.toggle("hidden", displayMode !== "card");
       compact.classList.toggle("active", displayMode === "compact");
 
-      list.innerHTML = items.map(item => {
+      const cardHtml = item => {
         const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
         const area = itemArea(item);
         const allocation = allocationFor(item);
@@ -2074,7 +2118,11 @@
             </div>
           </article>
         `;
-      }).join("") || `<div class="empty">這個篩選目前沒有商品</div>`;
+      };
+      list.innerHTML = items.map(cardHtml).join("") || `<div class="empty">這個篩選目前沒有商品</div>`;
+      const modalIt = modalItem ? groupedItems().find(x => x.item === modalItem) : null;
+      document.getElementById("cardModalBox").innerHTML = modalIt ? cardHtml(modalIt) : "";
+      document.getElementById("cardModal").classList.toggle("hidden", !modalIt);
 
       compact.innerHTML = items.map(item => {
         const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
@@ -2759,15 +2807,14 @@
     document.getElementById("compactList").addEventListener("click", event => {
       const row = event.target.closest("[data-jump]");
       if (!row) return;
-      const name = row.dataset.jump;
-      displayMode = "card";
-      document.querySelectorAll(".mode").forEach(btn => btn.classList.toggle("active", btn.dataset.mode === "card"));
+      modalItem = row.dataset.jump;
       renderItems();
-      const card = [...document.querySelectorAll("#itemList [data-item]")].find(c => c.dataset.item === name);
-      if (card) {
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-        card.style.outline = "3px solid var(--accent)";
-        setTimeout(() => { card.style.outline = ""; }, 2000);
+    });
+
+    document.getElementById("cardModal").addEventListener("click", event => {
+      if (event.target.id === "cardModal" || event.target.id === "cardModalClose") {
+        modalItem = null;
+        renderItems();
       }
     });
 
@@ -2798,7 +2845,7 @@
       });
     });
 
-    document.getElementById("itemList").addEventListener("input", event => {
+    document.getElementById("shopView").addEventListener("input", event => {
       const card = event.target.closest("[data-item]");
       if (!card || !event.target.dataset.field) return;
       const item = card.dataset.item;
@@ -2810,7 +2857,7 @@
       renderAll();
     });
 
-    document.getElementById("itemList").addEventListener("click", event => {
+    document.getElementById("shopView").addEventListener("click", event => {
       if (event.target.dataset.cancelSeq) {
         cancelOrder(event.target.dataset.cancelSeq);
         renderAll();
@@ -3079,7 +3126,7 @@
     });
 
     // 攔截單價欄位點擊，改用數字盤
-    document.getElementById("itemList").addEventListener("click", event => {
+    document.getElementById("shopView").addEventListener("click", event => {
       const input = event.target;
       if (input.tagName === "INPUT" && input.dataset.field === "price") {
         event.preventDefault();
