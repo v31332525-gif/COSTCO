@@ -1954,18 +1954,37 @@
 
     document.getElementById("newWeekBtn").addEventListener("click", () => {
       const orderCount = state.orders.length;
-      if (!confirm(`確定要歸檔本週（共 ${orderCount} 筆訂單）並開始新的一週嗎？\n\n歸檔後本週會全部清空歸零（未結清客人不會帶入新週），舊資料可在頂部週次列查看。`)) return;
+      if (!confirm(`確定要歸檔本週（共 ${orderCount} 筆訂單）並開始新的一週嗎？\n\n歸檔後商品與訂單會清空歸零；未結清的客人會轉成「欠款提醒」留在收款總覽，收到款時打勾，錢就記在收款那一週。`)) return;
 
       // 歸檔
       archiveCurrentWeek();
 
       // 歸檔時自動下載本週紀錄檔
+      activeBatch = "all";
       try { downloadExportCsv(`${new Date().getMonth() + 1}/${new Date().getDate()} 歸檔`); } catch (e) {}
 
-      // 歸檔後全部歸零（不自動帶入上週資料）
+      // 歸檔後：商品/訂單歸零，未結清客人轉成「欠款提醒」帶到新的一週（不進採買清單）
+      const _dl = new Date();
+      const _dLabel = (_dl.getMonth() + 1) + "/" + _dl.getDate() + " 歸檔";
+      const _cs2 = state.customerStatus || {};
+      const _totals = buildCustomerTotals();
+      const _newDebts = [];
+      (state.debts || []).forEach(d => { if (!(d.paid && d.picked)) _newDebts.push(d); });
+      _totals.forEach((data, customer) => {
+        const st = _cs2[customer] || {};
+        if (st.paid && st.picked) return;
+        if (!(data.goods + data.fee)) return;
+        _newDebts.push({
+          customer, from: _dLabel, goods: data.goods, fee: data.fee,
+          items: data.items.map(it => ({ name: it.name, qty: it.qty })),
+          paid: !!st.paid, paidAt: st.paidAt || null,
+          picked: !!st.picked, pickedAt: st.pickedAt || null, settledDate: null
+        });
+      });
       state.orders = [];
       state.purchases = {};
       state.customerStatus = {};
+      state.debts = _newDebts;
       state.cancelledOrders = [];
       state.receiptTotal = "";
       state.receiptRows = [];
@@ -2553,7 +2572,7 @@
       ].join("");
     }
 
-    function renderCollect() {
+    function buildCustomerTotals() {
       const customers = new Map();
       groupedItems().forEach(item => {
         const purchase = purchaseFor(item.item, item.totalQty);
@@ -2570,14 +2589,51 @@
           c.items.push({ name: order.item, qty: order.assignedQty, amount, fee });
         });
       });
+      return customers;
+    }
+
+    // 欠款（未結清帶入）區塊
+    function renderDebtRowsHtml(debts) {
+      if (!debts || !debts.length) return "";
+      const row = (d, i) => `
+        <div class="collect-row" style="background:#fff8ec">
+          <div class="collect-row-header">
+            <span class="collect-name">💸 ${escapeHtml(d.customer)} <span style="font-size:11px;color:var(--muted);font-weight:400">（${escapeHtml(d.from || "之前")}欠款）</span></span>
+            <span class="collect-goods">${money(d.goods)}</span>
+            <span class="collect-fee">+${money(d.fee)}</span>
+            <span class="collect-total">${money((d.goods || 0) + (d.fee || 0))}</span>
+          </div>
+          <div class="collect-status-row">
+            ${d.items && d.items.length ? `<span style="font-size:11px;color:var(--muted);flex-basis:100%">${escapeHtml(d.items.map(it => String(it.name).replace(/^\d+\s*/, "") + "×" + it.qty).join("、"))}</span>` : ""}
+            ${d.settledDate ? `<span class="settled-badge">✅ ${d.settledDate} 結清</span>` : ""}
+            ${d.paid && d.paidAt ? `<span class="paid-badge">💰 收款 ${d.paidAt}</span>` : ""}
+            ${d.picked && d.pickedAt ? `<span class="paid-badge">📦 取貨 ${d.pickedAt}</span>` : ""}
+            <button class="cstat ${d.paid ? 'on' : ''}" data-debt-pay="${i}">${d.paid ? '✅ 已付款' : '💰 未付款'}</button>
+            <button class="cstat ${d.picked ? 'on' : ''}" data-debt-pick="${i}">${d.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
+          </div>
+        </div>`;
+      const openParts = [], doneParts = [];
+      debts.forEach((d, i) => { (d.paid && d.picked ? doneParts : openParts).push(row(d, i)); });
+      const openTotal = debts.filter(d => !d.paid).reduce((s, d) => s + (d.goods || 0) + (d.fee || 0), 0);
+      let html = "";
+      if (openParts.length) html += `<div style="padding:8px 14px 4px;font-size:13px;font-weight:700;color:#b26a00">💸 之前未結清（收款提醒）　還沒收 ${money(openTotal)}</div>` + openParts.join("");
+      if (doneParts.length) html += `<div style="padding:6px 14px 2px;font-size:12px;color:var(--muted)">✅ 已收欠款（記在本週）</div>` + doneParts.join("");
+      return html;
+    }
+
+    function renderCollect() {
+      const customers = buildCustomerTotals();
 
       const entries = Array.from(customers.entries());
       const collectRows = document.getElementById("collectRows");
       const collectCount = document.getElementById("collectCount");
       const collectGrandTotal = document.getElementById("collectGrandTotal");
 
+      const _debtsAll = currentViewState().debts || [];
+      const _debtHtml = renderDebtRowsHtml(_debtsAll);
+      const _debtUnpaidN = _debtsAll.filter(d => !d.paid).length;
       if (entries.length === 0) {
-        collectRows.innerHTML = `<div class="empty">填好單價後自動計算</div>`;
+        collectRows.innerHTML = _debtHtml || `<div class="empty">填好單價後自動計算</div>`;
         collectCount.textContent = "0";
         collectGrandTotal.textContent = "$0";
         return;
@@ -2589,7 +2645,7 @@
       const _cs = _vs.customerStatus;
       const unpaidN = entries.filter(([c]) => !(_cs[c] || {}).paid).length;
       const unpickedN = entries.filter(([c]) => !(_cs[c] || {}).picked).length;
-      const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人</div>`;
+      const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人${_debtUnpaidN ? `　·　欠款未收 <b>${_debtUnpaidN}</b> 筆` : ""}</div>`;
       const __built = entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
         grandTotal += total;
@@ -2630,7 +2686,7 @@
       const __doneHtml = __done.length
         ? `<div class="settled-toggle" id="settledToggle">✅ 已結清（${__done.length}）<span id="settledArrow">▶</span></div><div class="settled-box hidden" id="settledBox">${__done.map(b => b.html).join("")}</div>`
         : "";
-      collectRows.innerHTML = statusSummary + (__out || `<div class="empty" style="padding:10px 14px">目前沒有未結清的客人 🎉</div>`) + __doneHtml;
+      collectRows.innerHTML = statusSummary + _debtHtml + (__out || `<div class="empty" style="padding:10px 14px">目前沒有未結清的客人 🎉</div>`) + __doneHtml;
 
       collectCount.textContent = entries.length;
       collectGrandTotal.textContent = money(grandTotal);
@@ -2652,6 +2708,23 @@
     document.getElementById("collectRows").addEventListener("click", event => {
       const payBtn = event.target.closest("[data-pay]");
       const pickBtn = event.target.closest("[data-pick]");
+      const dPayBtn = event.target.closest("[data-debt-pay]");
+      const dPickBtn = event.target.closest("[data-debt-pick]");
+      if (dPayBtn || dPickBtn) {
+        if (isViewingArchive()) return;
+        const di = Number((dPayBtn || dPickBtn).dataset[dPayBtn ? "debtPay" : "debtPick"]);
+        const d = (state.debts || [])[di];
+        if (!d) return;
+        const fD = x => (x.getMonth() + 1) + "/" + x.getDate();
+        const fDT = x => fD(x) + " " + String(x.getHours()).padStart(2, "0") + ":" + String(x.getMinutes()).padStart(2, "0");
+        if (dPayBtn) { d.paid = !d.paid; d.paidAt = d.paid ? fDT(new Date()) : null; }
+        else { d.picked = !d.picked; d.pickedAt = d.picked ? fDT(new Date()) : null; }
+        if (d.paid && d.picked) { if (!d.settledDate) d.settledDate = fD(new Date()); }
+        else d.settledDate = null;
+        saveState();
+        renderCollect();
+        return;
+      }
       if (!payBtn && !pickBtn) return;
       const name = (payBtn || pickBtn).dataset[payBtn ? "pay" : "pick"];
       // 在哪一週的畫面按，就寫進哪一週：歷史週寫回歸檔，不會寫進本週
@@ -3568,6 +3641,16 @@
           cs.picked ? "已取貨 " + (cs.pickedAt || cs.settledDate || "") : "未取貨"]);
         rows.push([]);
       });
+      const debts = vs.debts || [];
+      if (debts.length) {
+        rows.push([]);
+        rows.push(["", "── 之前未結清（欠款）──"]);
+        debts.forEach(d => {
+          rows.push([d.from || "", d.customer + "（欠款）", "", "", "", (d.items || []).map(it => it.name + "×" + it.qty).join("、"), "", "", "", d.goods || "", d.fee || "", (d.goods || 0) + (d.fee || 0),
+            d.paid ? "已付款 " + (d.paidAt || "") : "未付款",
+            d.picked ? "已取貨 " + (d.pickedAt || "") : "未取貨"]);
+        });
+      }
       return rows;
     }
     function downloadExportCsv(labelText) {
