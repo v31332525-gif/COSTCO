@@ -807,6 +807,50 @@
       gap: 11px;
     }
 
+    /* 需求三：訂購數量 +/- 與 +0.5 快捷鍵 */
+    .qty-stepper {
+      display: grid;
+      grid-template-columns: 48px 1fr 48px auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .qty-stepper input {
+      text-align: center;
+    }
+
+    .qty-step-btn {
+      min-height: 48px;
+      min-width: 48px;
+      border-radius: 8px;
+      background: var(--chip);
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .qty-step-btn:active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .qty-half-btn {
+      min-height: 48px;
+      padding: 0 12px;
+      border-radius: 8px;
+      background: #eef6f4;
+      border: 1px solid var(--accent);
+      color: var(--accent-strong);
+      font-weight: 900;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .qty-half-btn:active {
+      background: var(--accent);
+      color: white;
+    }
+
     .import-panel {
       display: grid;
       gap: 10px;
@@ -1678,7 +1722,12 @@
           </label>
           <label>
             數量
-            <input id="quantity" inputmode="numeric" type="number" min="1" value="1">
+            <div class="qty-stepper">
+              <button type="button" class="qty-step-btn" id="qtyMinusBtn" aria-label="減少數量">－</button>
+              <input id="quantity" inputmode="decimal" type="number" min="0.5" step="0.5" value="1">
+              <button type="button" class="qty-step-btn" id="qtyPlusBtn" aria-label="增加數量">＋</button>
+              <button type="button" class="qty-half-btn" id="qtyHalfBtn">+0.5</button>
+            </div>
           </label>
           <label>
             備註
@@ -2332,7 +2381,7 @@
             </div>
             <div class="controls">
               <label>需求數量<input value="${item.totalQty}" readonly></label>
-              <label>實買數量<input data-field="boughtQty" inputmode="numeric" type="number" min="0" value="${purchase.boughtQty}"></label>
+              <label>實買數量<input data-field="boughtQty" inputmode="decimal" type="number" min="0" step="0.5" value="${purchase.boughtQty}"></label>
               <label>限購數<input data-field="limit" inputmode="numeric" type="number" min="0" placeholder="不限" value="${purchase.limit || ""}"></label>
               <label>單價<input data-field="price" data-qty="${item.totalQty}" inputmode="numeric" type="number" min="0" value="${purchase.price}"></label>
               <label>現場位置
@@ -3439,7 +3488,7 @@
         source: document.getElementById("orderSource").value,
         area: (function(){ const sel = document.getElementById("productArea").value; if (sel && sel !== "待定位") return sel; return guessAreaFromName(productEl.value.trim()) || sel; })(),
         item: normalizeItemName(productEl.value),
-        qty: Number(document.getElementById("quantity").value || 1),
+        qty: clampQtyToHalf(document.getElementById("quantity").value || 1),
         note: document.getElementById("orderNote").value.trim()
       };
       state.orders.push(order);
@@ -3447,6 +3496,29 @@
       event.target.reset();
       document.getElementById("quantity").value = 1;
       renderAll();
+    });
+
+    // 需求三：訂購數量支援 0.5 一階（如 1.5、2.5 組），鎖在 0.5 倍數避免浮點誤差
+    function clampQtyToHalf(value) {
+      let v = Math.round(Number(value || 0) * 2) / 2;
+      if (v < 0.5) v = 0.5;
+      return v;
+    }
+
+    document.getElementById("qtyMinusBtn").addEventListener("click", () => {
+      const input = document.getElementById("quantity");
+      input.value = clampQtyToHalf(Number(input.value || 1) - 1);
+    });
+    document.getElementById("qtyPlusBtn").addEventListener("click", () => {
+      const input = document.getElementById("quantity");
+      input.value = clampQtyToHalf(Number(input.value || 1) + 1);
+    });
+    document.getElementById("qtyHalfBtn").addEventListener("click", () => {
+      const input = document.getElementById("quantity");
+      input.value = clampQtyToHalf(Number(input.value || 1) + 0.5);
+    });
+    document.getElementById("quantity").addEventListener("change", event => {
+      event.target.value = clampQtyToHalf(event.target.value);
     });
 
     document.getElementById("resetDemo").addEventListener("click", () => {
@@ -3552,14 +3624,19 @@
           const card = target.closest("[data-item]");
           if (card && purchaseFor(card.dataset.item).status !== "done") {
             gotItItem = card.dataset.item;
-            gotItNeed = Math.max(1, Number(target.dataset.qty || 1));
+            gotItNeed = Math.max(0.5, Number(target.dataset.qty || 1));
             document.getElementById("gotItName").textContent = gotItItem;
             document.getElementById("gotItTitle").textContent = gotItNeed > 1 ? "拿到了嗎？共需 " + gotItNeed + " 件！" : "拿到了嗎？";
             const btns = [];
-            if (gotItNeed === 1) {
-              btns.push('<button class="np np-ok" data-gotqty="1" style="grid-column:auto">✅ 已拿到</button>');
+            const gotItStep = Number.isInteger(gotItNeed) ? 1 : 0.5; // 訂購數量支援 0.5，快選按鈕跟著用 0.5 一階
+            if (gotItNeed <= gotItStep) {
+              btns.push('<button class="np np-ok" data-gotqty="' + gotItNeed + '" style="grid-column:auto">✅ 已拿到</button>');
             } else {
-              for (let q = 1; q <= gotItNeed; q++) btns.push('<button class="np ' + (q === gotItNeed ? "np-ok" : "") + '" data-gotqty="' + q + '" style="grid-column:auto">' + (q === gotItNeed ? "✅ " : "") + q + ' 件</button>');
+              for (let q = gotItStep; q <= gotItNeed + 0.001; q += gotItStep) {
+                q = Math.round(q * 2) / 2; // 避免浮點數誤差（例如 1.5+0.5=1.9999...）
+                const isLast = Math.abs(q - gotItNeed) < 0.01;
+                btns.push('<button class="np ' + (isLast ? "np-ok" : "") + '" data-gotqty="' + q + '" style="grid-column:auto">' + (isLast ? "✅ " : "") + q + ' 件</button>');
+              }
             }
             btns.push('<button class="np np-cancel" data-gotit="no" style="grid-column:auto">還沒</button>');
             const grid = document.getElementById("gotItBtns");
