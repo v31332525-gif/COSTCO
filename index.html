@@ -1672,6 +1672,16 @@
             <span class="collect-toggle-arrow">▼</span>
           </button>
           <div class="collect-summary-panel" id="collectSummaryPanel">
+            <div class="collect-tools" style="padding:10px 14px 0">
+              <input type="search" id="collectSearch" placeholder="🔍 搜尋客人" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:8px;box-sizing:border-box">
+              <button type="button" id="mergeCustomerToggleBtn" style="width:100%;min-height:38px;border-radius:8px;background:#fff8ec;border:1px solid #ffe1ae;color:#b26a00;font-weight:800;font-size:13px;margin-bottom:8px">🔀 合併重複客人</button>
+              <div id="mergeCustomerBody" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#fffaf0;border:1px solid #ffe1ae;border-radius:8px">
+                <select id="mergeFromSelect" style="flex:1;min-width:110px;min-height:36px;border-radius:6px;border:1px solid var(--line)"></select>
+                <span style="font-size:12px;color:var(--muted)">合併進 →</span>
+                <select id="mergeIntoSelect" style="flex:1;min-width:110px;min-height:36px;border-radius:6px;border:1px solid var(--line)"></select>
+                <button type="button" id="mergeCustomerBtn" class="primary" style="min-height:36px;padding:0 14px;font-size:13px;flex:0 0 auto">合併</button>
+              </div>
+            </div>
             <div class="collect-summary-header">
               <span>客人</span>
               <span>商品金額</span>
@@ -1842,6 +1852,7 @@
     let displayMode = "card";
     let modalItem = null;
     let searchText = "";
+    let collectSearchText = "";
 
     function loadState() {
       const saved = localStorage.getItem("costco-helper-v1");
@@ -2002,7 +2013,48 @@
     });
 
     function normalizeCustomer(name) {
-      return String(name || "").normalize("NFKC").replace(/＠/g, "@").replace(/\s+/g, " ").trim();
+      let s = String(name || "").normalize("NFKC").replace(/＠/g, "@").trim();
+      s = s.replace(/^@+/, ""); // 開頭有沒有加小老鼠(@)一律視為同一人
+      s = s.replace(/\s+/g, " ").trim();
+      return s.toLowerCase(); // 英文名稱一律轉小寫比對/儲存，避免 Abc / abc 被當成不同客人
+    }
+
+    // 合併兩筆 customerStatus 紀錄：付款/取貨只要有一邊打勾就算，時間戳記取先有的那筆
+    function mergeCustomerStatusEntry(a, b) {
+      a = a || {}; b = b || {};
+      return {
+        paid: !!(a.paid || b.paid),
+        paidAt: a.paidAt || b.paidAt || null,
+        picked: !!(a.picked || b.picked),
+        pickedAt: a.pickedAt || b.pickedAt || null,
+        settledDate: a.settledDate || b.settledDate || null
+      };
+    }
+
+    // 舊資料客戶名稱歸一化搬遷：把因大小寫 / 有無 @ 造成的重複客人合併成同一把 key
+    function migrateCustomerNames(target) {
+      if (!target) return false;
+      let changed = false;
+      (target.orders || []).forEach(o => {
+        const norm = normalizeCustomer(o.customer);
+        if (norm !== o.customer) { o.customer = norm; changed = true; }
+      });
+      (target.debts || []).forEach(d => {
+        const norm = normalizeCustomer(d.customer);
+        if (norm !== d.customer) { d.customer = norm; changed = true; }
+      });
+      if (target.customerStatus) {
+        const merged = {};
+        Object.keys(target.customerStatus).forEach(oldKey => {
+          const newKey = normalizeCustomer(oldKey);
+          if (newKey !== oldKey) changed = true;
+          merged[newKey] = merged[newKey]
+            ? mergeCustomerStatusEntry(merged[newKey], target.customerStatus[oldKey])
+            : target.customerStatus[oldKey];
+        });
+        target.customerStatus = merged;
+      }
+      return changed;
     }
 
     function normalizeItemName(item) {
@@ -2621,6 +2673,23 @@
       return html;
     }
 
+    function matchesCollectSearch(name) {
+      if (!collectSearchText) return true;
+      return String(name || "").toLowerCase().includes(collectSearchText.toLowerCase());
+    }
+
+    function renderMergeSelects(names) {
+      const fromSel = document.getElementById("mergeFromSelect");
+      const intoSel = document.getElementById("mergeIntoSelect");
+      if (!fromSel || !intoSel) return;
+      const optHtml = `<option value="">請選擇</option>` + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+      const prevFrom = fromSel.value, prevInto = intoSel.value;
+      fromSel.innerHTML = optHtml;
+      intoSel.innerHTML = optHtml;
+      if (names.includes(prevFrom)) fromSel.value = prevFrom;
+      if (names.includes(prevInto)) intoSel.value = prevInto;
+    }
+
     function renderCollect() {
       const customers = buildCustomerTotals();
 
@@ -2630,10 +2699,19 @@
       const collectGrandTotal = document.getElementById("collectGrandTotal");
 
       const _debtsAll = currentViewState().debts || [];
-      const _debtHtml = renderDebtRowsHtml(_debtsAll);
+
+      // 合併客人下拉選單：用完整客人清單，不受搜尋篩選影響
+      const _allNames = Array.from(new Set([
+        ...entries.map(([c]) => c),
+        ..._debtsAll.map(d => d.customer)
+      ].filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hant"));
+      renderMergeSelects(_allNames);
+
+      const _debtsShown = _debtsAll.filter(d => matchesCollectSearch(d.customer));
+      const _debtHtml = renderDebtRowsHtml(_debtsShown);
       const _debtUnpaidN = _debtsAll.filter(d => !d.paid).length;
       if (entries.length === 0) {
-        collectRows.innerHTML = _debtHtml || `<div class="empty">填好單價後自動計算</div>`;
+        collectRows.innerHTML = _debtHtml || (collectSearchText ? `<div class="empty">找不到符合「${escapeHtml(collectSearchText)}」的客人</div>` : `<div class="empty">填好單價後自動計算</div>`);
         collectCount.textContent = "0";
         collectGrandTotal.textContent = "$0";
         return;
@@ -2679,14 +2757,15 @@
             <div class="cdi-total">商品 ${money(data.goods)} ＋ 代購費 ${money(data.fee)} ＝ 應收 <b>${money(total)}</b></div>
           </div>
         </div>`;
-        return { settled: !!(cs.paid && cs.picked), html: __rowHtml };
+        return { settled: !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml };
       });
-      const __out = __built.filter(b => !b.settled).map(b => b.html).join("");
-      const __done = __built.filter(b => b.settled);
+      const __out = __built.filter(b => !b.settled && b.matched).map(b => b.html).join("");
+      const __done = __built.filter(b => b.settled && b.matched);
       const __doneHtml = __done.length
         ? `<div class="settled-toggle" id="settledToggle">✅ 已結清（${__done.length}）<span id="settledArrow">▶</span></div><div class="settled-box hidden" id="settledBox">${__done.map(b => b.html).join("")}</div>`
         : "";
-      collectRows.innerHTML = statusSummary + _debtHtml + (__out || `<div class="empty" style="padding:10px 14px">目前沒有未結清的客人 🎉</div>`) + __doneHtml;
+      const __emptyMsg = collectSearchText ? `找不到符合「${escapeHtml(collectSearchText)}」的客人` : "目前沒有未結清的客人 🎉";
+      collectRows.innerHTML = statusSummary + _debtHtml + (__out || (__doneHtml ? "" : `<div class="empty" style="padding:10px 14px">${__emptyMsg}</div>`)) + __doneHtml;
 
       collectCount.textContent = entries.length;
       collectGrandTotal.textContent = money(grandTotal);
@@ -2765,6 +2844,50 @@
       const panel = document.getElementById("collectSummaryPanel");
       btn.classList.toggle("open");
       panel.classList.toggle("open");
+    });
+
+    // 搜尋客人
+    document.getElementById("collectSearch").addEventListener("input", event => {
+      collectSearchText = event.target.value.trim();
+      renderCollect();
+    });
+
+    // 合併重複客人：展開/收合
+    document.getElementById("mergeCustomerToggleBtn").addEventListener("click", () => {
+      const body = document.getElementById("mergeCustomerBody");
+      const isOpen = body.style.display === "flex";
+      body.style.display = isOpen ? "none" : "flex";
+    });
+
+    // 合併重複客人：執行合併
+    document.getElementById("mergeCustomerBtn").addEventListener("click", () => {
+      const fromName = document.getElementById("mergeFromSelect").value;
+      const intoName = document.getElementById("mergeIntoSelect").value;
+      if (!fromName || !intoName) { alert("請選擇要合併的兩位客人"); return; }
+      if (fromName === intoName) { alert("兩邊選了同一位客人，不用合併"); return; }
+      if (!confirm(`確定要把「${fromName}」的訂單、付款/取貨狀態全部合併進「${intoName}」嗎？\n合併後「${fromName}」這個名字就會消失，此動作無法復原。`)) return;
+
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
+      }
+
+      (_target.orders || []).forEach(o => { if (o.customer === fromName) o.customer = intoName; });
+      (_target.debts || []).forEach(d => { if (d.customer === fromName) d.customer = intoName; });
+      _target.customerStatus = _target.customerStatus || {};
+      if (_target.customerStatus[fromName]) {
+        _target.customerStatus[intoName] = mergeCustomerStatusEntry(_target.customerStatus[intoName], _target.customerStatus[fromName]);
+        delete _target.customerStatus[fromName];
+      }
+
+      if (_archives) saveArchives(_archives); else saveState();
+      document.getElementById("mergeCustomerBody").style.display = "none";
+      collectSearchText = "";
+      document.getElementById("collectSearch").value = "";
+      renderAll();
+      alert(`✅ 已合併！「${fromName}」的資料都併進「${intoName}」了。`);
     });
 
     function renderAll() {
@@ -3567,6 +3690,7 @@
     function applyRemoteState(remote) {
       if (remote.version !== 7) return; // 版本不符，略過
       Object.assign(state, remote);
+      migrateCustomerNames(state);
       renderAll();
       setSync("live");
     }
@@ -3789,6 +3913,7 @@
       }
     });
 
+    migrateCustomerNames(state);
     renderAll();
   </script>
 
