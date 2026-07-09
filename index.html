@@ -1579,6 +1579,9 @@
     <div class="archive-banner" id="archiveBanner" style="display:none;margin:0 14px 10px">
       📦 目前查看的是歷史紀錄（唯讀），切回「本週」才能編輯
     </div>
+    <div class="finance-lock-banner" id="financeLockBanner" style="display:none;margin:0 14px 10px;padding:8px 12px;border-radius:8px;background:#eef6f4;border:1px solid var(--accent-strong);color:var(--accent-strong);font-size:13px;font-weight:700">
+      🔒 帳款已鎖定：商品卡的異動不會影響已鎖定的應收總額與代購費（如需緊急修改，請到分帳頁解鎖）
+    </div>
 
     <main>
       <section class="view active" id="shopView">
@@ -1758,6 +1761,19 @@
         <div style="margin-bottom:14px">
           <button class="new-week-btn" id="newWeekBtn">🆕 歸檔本週，開始新的一週</button>
         </div>
+        <!-- 需求五：帳款鎖定開關 -->
+        <div class="finance-lock-panel" id="financeLockPanel" style="margin-bottom:14px;padding:12px 14px;background:white;border:1px solid var(--line);border-radius:10px;font-size:13px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:800;color:var(--ink)" id="financeLockTitle">🔓 帳款尚未鎖定</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px" id="financeLockSub">建議完成當日採購初次對帳後鎖定，避免誤動影響金額</div>
+            </div>
+            <button type="button" id="financeLockToggleBtn" style="min-height:40px;padding:0 16px;border-radius:20px;font-weight:800;font-size:13px">🔒 鎖定帳款</button>
+          </div>
+          <button type="button" id="financeLockLogToggleBtn" style="margin-top:8px;background:none;border:none;color:var(--accent-strong);font-size:12px;font-weight:700;padding:0;cursor:pointer">📜 查看操作紀錄 <span id="financeLockLogArrow">▶</span></button>
+          <div id="financeLockLogBody" class="hidden" style="margin-top:6px;max-height:160px;overflow-y:auto;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px"></div>
+        </div>
+
         <!-- 收款總覽 -->
         <div class="collect-panel">
           <button class="collect-toggle-btn" id="collectToggleBtn">
@@ -1765,6 +1781,13 @@
             <span class="collect-toggle-arrow">▼</span>
           </button>
           <div class="collect-summary-panel" id="collectSummaryPanel">
+            <!-- 需求七：實體現金核對看板 -->
+            <div class="cash-reconcile-board" id="cashReconcileBoard" style="margin:10px 14px 0;padding:12px 14px;background:#eef8f2;border:1px solid #bfe3cf;border-radius:10px;font-size:13px">
+              <div style="font-weight:800;margin-bottom:6px;color:var(--ink)">💵 實體現金核對看板</div>
+              <div style="display:flex;justify-content:space-between"><span>本週商品已收總金額</span><strong id="cashCollectedTotal" style="color:var(--ok)">$0</strong></div>
+              <div style="display:flex;justify-content:space-between"><span>目前未收／欠款總金額</span><strong id="cashOutstandingTotal" style="color:var(--danger)">$0</strong></div>
+              <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #bfe3cf;margin-top:4px"><span style="font-weight:800">本週商品應收總計（大計）</span><strong id="cashGrandTotal" style="font-weight:800">$0</strong></div>
+            </div>
             <div class="collect-tools" style="padding:10px 14px 0">
               <input type="search" id="collectSearch" placeholder="🔍 搜尋客人" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:8px;box-sizing:border-box">
               <button type="button" id="mergeCustomerToggleBtn" style="width:100%;min-height:38px;border-radius:8px;background:#fff8ec;border:1px solid #ffe1ae;color:#b26a00;font-weight:800;font-size:13px;margin-bottom:8px">🔀 合併重複客人</button>
@@ -1787,6 +1810,17 @@
               <span>總計 <strong id="collectGrandTotal">$0</strong></span>
             </div>
           </div>
+        </div>
+
+        <!-- 分層對帳（需求四） -->
+        <div class="reconcile-panel" id="reconcilePanel" style="margin-bottom:14px;padding:12px 14px;background:#f7f5ef;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.9">
+          <div style="font-weight:800;margin-bottom:6px;color:var(--ink)">🧾 分層對帳（自動核對，取代人工 Excel）</div>
+          <div style="display:flex;justify-content:space-between"><span>已買總額（登記金額）</span><strong id="reconcileRegistered">$0</strong></div>
+          <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 客戶商品分帳總額</span><strong id="reconcileCustomerGoods">$0</strong></div>
+          <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 店（進位差額）商品金額</span><strong id="reconcileStoreGoods">$0</strong></div>
+          <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed var(--line);margin-top:4px"><span>核對結果</span><strong id="reconcileCheck">✅ 已對平</strong></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"><span>代購費總額（不含店）</span><strong id="reconcileFeeTotal">$0</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>客戶應付總額（商品＋代購費）</span><strong id="reconcileCustomerPayable">$0</strong></div>
         </div>
 
         <!-- 社群貼文通知 -->
@@ -1887,6 +1921,29 @@
       <div class="modal-actions">
         <button class="modal-cancel" id="rescheduleCancel">取消</button>
         <button class="modal-confirm" id="rescheduleConfirm">確認移週</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 店家差額移轉 Modal（需求四）-->
+  <div class="modal-overlay hidden" id="transferModal">
+    <div class="modal-box">
+      <p class="modal-title" id="transferTitle">移轉給客人</p>
+      <p class="modal-sub" id="transferSubtitle">選擇要移轉的數量與客人</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin:8px 0">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)">
+          移轉數量（最多 <span id="transferMaxQty">0</span>）
+          <input type="number" id="transferQtyInput" min="0.5" step="0.5" inputmode="decimal" style="min-height:44px;font-size:18px;border:1px solid var(--line);border-radius:8px;padding:0 10px;box-sizing:border-box">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)">
+          指定客人
+          <input type="text" id="transferCustomerInput" list="transferCustomerList" placeholder="輸入客人姓名" style="min-height:44px;font-size:16px;border:1px solid var(--line);border-radius:8px;padding:0 10px;box-sizing:border-box">
+          <datalist id="transferCustomerList"></datalist>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="transferCancel">取消</button>
+        <button class="modal-confirm" id="transferConfirm">確認移轉</button>
       </div>
     </div>
   </div>
@@ -2333,6 +2390,10 @@
     }
 
     function registeredTotal() {
+      const vs = currentViewState();
+      if (vs.financeLock && vs.financeLock.locked && vs.financeLock.snapshot) {
+        return Object.values(vs.financeLock.snapshot).reduce((sum, c) => sum + Number(c.goods || 0), 0);
+      }
       return groupedItems().reduce((sum, item) => sum + itemSubtotal(item), 0);
     }
 
@@ -2740,7 +2801,25 @@
       ].join("");
     }
 
+    // 需求四：採購「無條件進位」溢出差額，自動歸屬給虛擬客人「店」
+    const STORE_CUSTOMER = "店";
+
+    function surplusQty(item) {
+      const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
+      if (purchase.status === "missing") return 0;
+      const bought = effectiveBoughtQty(item, purchase);
+      const ordered = item.orders.reduce((sum, order) => sum + Number(order.qty || 0), 0);
+      const surplus = bought - ordered;
+      return surplus > 0.001 ? Math.round(surplus * 2) / 2 : 0;
+    }
+
     function buildCustomerTotals() {
+      const vs = currentViewState();
+      if (vs.financeLock && vs.financeLock.locked && vs.financeLock.snapshot) {
+        const frozen = new Map();
+        Object.keys(vs.financeLock.snapshot).forEach(name => frozen.set(name, vs.financeLock.snapshot[name]));
+        return frozen;
+      }
       const customers = new Map();
       groupedItems().forEach(item => {
         const purchase = purchaseFor(item.item, item.totalQty);
@@ -2756,6 +2835,23 @@
           c.fee += fee;
           c.items.push({ name: order.item, qty: order.assignedQty, amount, fee });
         });
+        // 進位差額（多買未分配到任何客人的部分）自動歸「店」，不收代購費
+        const surplus = surplusQty(item);
+        if (surplus > 0) {
+          if (!customers.has(STORE_CUSTOMER)) customers.set(STORE_CUSTOMER, { goods: 0, fee: 0, items: [], isStore: true });
+          const c = customers.get(STORE_CUSTOMER);
+          const amount = surplus * unitPrice;
+          c.goods += amount;
+          c.items.push({ name: item.item, qty: surplus, amount, fee: 0 });
+        }
+      });
+      // 需求六：客人退貨/退款 -- 以負項紀錄自動從該客人分帳中扣除，並連動扣除代購費
+      (vs.returns || []).forEach(ret => {
+        if (!customers.has(ret.customer)) customers.set(ret.customer, { goods: 0, fee: 0, items: [] });
+        const c = customers.get(ret.customer);
+        c.goods += ret.amount;
+        c.fee += ret.fee;
+        c.items.push({ name: ret.item, qty: ret.qty, amount: ret.amount, fee: ret.fee, isReturn: true });
       });
       return customers;
     }
@@ -2818,7 +2914,7 @@
 
       // 合併客人下拉選單：用完整客人清單，不受搜尋篩選影響
       const _allNames = Array.from(new Set([
-        ...entries.map(([c]) => c),
+        ...entries.filter(([c]) => c !== STORE_CUSTOMER).map(([c]) => c),
         ..._debtsAll.map(d => d.customer)
       ].filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hant"));
       renderMergeSelects(_allNames);
@@ -2837,45 +2933,65 @@
       const _vs = currentViewState();
       _vs.customerStatus = _vs.customerStatus || {};
       const _cs = _vs.customerStatus;
-      const unpaidN = entries.filter(([c]) => !(_cs[c] || {}).paid).length;
-      const unpickedN = entries.filter(([c]) => !(_cs[c] || {}).picked).length;
+      const _realEntries = entries.filter(([c]) => c !== STORE_CUSTOMER);
+      const unpaidN = _realEntries.filter(([c]) => !(_cs[c] || {}).paid).length;
+      const unpickedN = _realEntries.filter(([c]) => !(_cs[c] || {}).picked).length;
       const statusSummary = `<div class="collect-status-summary">尚未付款 <b>${unpaidN}</b> 人　·　尚未取貨 <b>${unpickedN}</b> 人${_debtUnpaidN ? `　·　欠款未收 <b>${_debtUnpaidN}</b> 筆` : ""}</div>`;
       const __built = entries.map(([customer, data], idx) => {
         const total = data.goods + data.fee;
-        grandTotal += total;
+        const isStore = customer === STORE_CUSTOMER;
+        if (!isStore) grandTotal += total;
         const cs = _cs[customer] || {};
         const detailRows = data.items.map(it => {
+          const isReturnLine = !!it.isReturn;
           const unit = it.qty ? Math.round(it.amount / it.qty) : it.amount;
           const unitFee = it.qty ? Math.round(it.fee / it.qty) : it.fee;
+          const canReturn = !isStore && !isReturnLine && customer !== STORE_CUSTOMER;
           return `
-          <div class="cdi">
-            <div class="cdi-name">${escapeHtml(it.name.replace(/^\d+\s*/, ""))}</div>
-            <div class="cdi-line">單價 ${money(unit)} × ${it.qty} ＝ <b>${money(it.amount)}</b></div>
-            ${it.fee ? `<div class="cdi-line">代購費 ${money(unitFee)} × ${it.qty} ＝ <b>${money(it.fee)}</b></div>` : ""}
+          <div class="cdi" ${isReturnLine ? 'style="color:var(--danger)"' : ""}>
+            <div class="cdi-name">${isReturnLine ? "↩️ " : ""}${escapeHtml(it.name.replace(/^\d+\s*/, ""))}${isReturnLine ? " 退貨" : ""}</div>
+            ${isReturnLine
+              ? `<div class="cdi-line">退貨 x${it.qty}，金額 <b>${money(it.amount)}</b></div>${it.fee ? `<div class="cdi-line">代購費退還 <b>${money(it.fee)}</b></div>` : ""}`
+              : `<div class="cdi-line">單價 ${money(unit)} × ${it.qty} ＝ <b>${money(it.amount)}</b></div>${it.fee ? `<div class="cdi-line">代購費 ${money(unitFee)} × ${it.qty} ＝ <b>${money(it.fee)}</b></div>` : ""}`}
+            ${isStore ? `<button type="button" class="transfer-btn" data-transfer-item="${escapeHtml(it.name)}" data-transfer-qty="${it.qty}" style="margin-top:4px;min-height:30px;padding:0 10px;border-radius:6px;background:#eef6f4;border:1px solid var(--accent-strong);color:var(--accent-strong);font-weight:700;font-size:12px">↗️ 移轉給客人</button>` : ""}
+            ${canReturn ? `<button type="button" class="return-btn" data-return-customer="${escapeHtml(customer)}" data-return-item="${escapeHtml(it.name)}" data-return-qty="${it.qty}" style="margin-top:4px;min-height:26px;padding:0 8px;border-radius:6px;background:#fff5f4;border:1px solid var(--danger);color:var(--danger);font-weight:700;font-size:11px;opacity:.7">↩️ 退貨/退款</button>` : ""}
           </div>`;
         }).join("");
-        const __rowHtml = `<div class="collect-row">
-          <div class="collect-row-header" data-collect-idx="${idx}">
-            <span class="collect-name">${escapeHtml(customer)} <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span></span>
-            <span class="collect-goods">${money(data.goods)}</span>
-            <span class="collect-fee">+${money(data.fee)}</span>
-            <span class="collect-total">${money(total)}</span>
-          </div>
-          <div class="collect-status-row">
+        const __nameHtml = isStore
+          ? `🏪 ${escapeHtml(customer)}　<span style="font-size:11px;color:var(--muted);font-weight:400">進位差額</span> <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span>`
+          : `${escapeHtml(customer)} <span style="font-size:12px;color:var(--muted);font-weight:400">▶ 明細</span>`;
+        const __statusRowHtml = isStore
+          ? `<span style="font-size:12px;color:var(--muted)">採購無條件進位多出的部分，如有客人加購請按下方「移轉給客人」</span>`
+          : `
             ${cs.settledDate ? `<span class="settled-badge">✅ ${cs.settledDate} 結清</span>` : ""}
             ${cs.paid && cs.paidAt ? `<span class="paid-badge">💰 收款 ${cs.paidAt}</span>` : ""}
             ${cs.picked && cs.pickedAt ? `<span class="paid-badge">📦 取貨 ${cs.pickedAt}</span>` : ""}
             <button class="cstat ${cs.paid ? 'on' : ''}" data-pay="${escapeHtml(customer)}">${cs.paid ? '✅ 已付款' : '💰 未付款'}</button>
             <button class="cstat ${cs.picked ? 'on' : ''}" data-pick="${escapeHtml(customer)}">${cs.picked ? '✅ 已取貨' : '📦 未取貨'}</button>
+          `;
+        const __rowHtml = `<div class="collect-row">
+          <div class="collect-row-header" data-collect-idx="${idx}">
+            <span class="collect-name">${__nameHtml}</span>
+            <span class="collect-goods">${money(data.goods)}</span>
+            <span class="collect-fee">+${money(data.fee)}</span>
+            <span class="collect-total">${money(total)}</span>
+          </div>
+          <div class="collect-status-row">
+            ${__statusRowHtml}
           </div>
           <div class="collect-detail" id="collect-detail-${idx}">
             ${detailRows}
             <div class="cdi-total">商品 ${money(data.goods)} ＋ 代購費 ${money(data.fee)} ＝ 應收 <b>${money(total)}</b></div>
           </div>
         </div>`;
-        return { settled: !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml };
+        return { settled: !isStore && !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml, isStore, paid: !!cs.paid };
       });
-      const __out = __built.filter(b => !b.settled && b.matched).map(b => b.html).join("");
+      // 需求八：收款清單動態排序 -- 已收欠款（已付款）的客人自動沉到清單最下方，未付款的保持在最上方催款；取消勾選會自動回到上方
+      const __out = __built.filter(b => !b.settled && b.matched).sort((a, b) => {
+        if (a.isStore !== b.isStore) return a.isStore ? 1 : -1;
+        if (a.paid !== b.paid) return a.paid ? 1 : -1;
+        return 0;
+      }).map(b => b.html).join("");
       const __done = __built.filter(b => b.settled && b.matched);
       const __doneHtml = __done.length
         ? `<div class="settled-toggle" id="settledToggle">✅ 已結清（${__done.length}）<span id="settledArrow">▶</span></div><div class="settled-box hidden" id="settledBox">${__done.map(b => b.html).join("")}</div>`
@@ -2883,7 +2999,7 @@
       const __emptyMsg = collectSearchText ? `找不到符合「${escapeHtml(collectSearchText)}」的客人` : "目前沒有未結清的客人 🎉";
       collectRows.innerHTML = statusSummary + _debtHtml + (__out || (__doneHtml ? "" : `<div class="empty" style="padding:10px 14px">${__emptyMsg}</div>`)) + __doneHtml;
 
-      collectCount.textContent = entries.length;
+      collectCount.textContent = _realEntries.length;
       collectGrandTotal.textContent = money(grandTotal);
     }
 
@@ -2918,6 +3034,7 @@
         else d.settledDate = null;
         saveState();
         renderCollect();
+        renderCashReconcile();
         return;
       }
       if (!payBtn && !pickBtn) return;
@@ -2944,6 +3061,7 @@
       else _st.settledDate = null;
       if (_archives) saveArchives(_archives); else saveState();
       renderCollect();
+      renderCashReconcile();
     });
 
     // 已結清區塊展開/收合
@@ -2960,6 +3078,47 @@
       const panel = document.getElementById("collectSummaryPanel");
       btn.classList.toggle("open");
       panel.classList.toggle("open");
+    });
+
+    // 需求五：帳款鎖定開關
+    document.getElementById("financeLockToggleBtn").addEventListener("click", () => {
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
+      }
+      const lock = ensureFinanceLock(_target);
+      const now = new Date();
+      if (!lock.locked) {
+        // 鎖定＝關閉開關：把目前算出的分帳結果凍結起來
+        const note = prompt("鎖定備註（選填，例如：完成當日採購初次對帳）", "完成當日採購初次對帳");
+        if (note === null) return; // 取消
+        const snapshot = {};
+        buildCustomerTotals().forEach((v, k) => { snapshot[k] = v; });
+        lock.locked = true;
+        lock.snapshot = snapshot;
+        lock.lockedAt = fmtLockTime(now);
+        lock.log.push({ action: "lock", at: fmtLockTime(now), note: note.trim() });
+      } else {
+        // 解鎖＝打開開關：僅供緊急加減單或跨週補單時使用
+        if (!confirm("確定要解鎖嗎？解鎖後，商品卡與訂單的異動將會重新影響應收總額與代購費，請只在緊急加單/減單/跨週補單時使用。")) return;
+        const note = prompt("解鎖原因（選填，例如：緊急加單）", "緊急加單");
+        if (note === null) return;
+        lock.locked = false;
+        lock.snapshot = null;
+        lock.lockedAt = null;
+        lock.log.push({ action: "unlock", at: fmtLockTime(now), note: note.trim() });
+      }
+      if (_archives) saveArchives(_archives); else saveState();
+      renderAll();
+    });
+
+    document.getElementById("financeLockLogToggleBtn").addEventListener("click", () => {
+      const body = document.getElementById("financeLockLogBody");
+      const arrow = document.getElementById("financeLockLogArrow");
+      const nowHidden = body.classList.toggle("hidden");
+      if (arrow) arrow.textContent = nowHidden ? "▶" : "▼";
     });
 
     // 搜尋客人
@@ -3006,15 +3165,244 @@
       alert(`✅ 已合併！「${fromName}」的資料都併進「${intoName}」了。`);
     });
 
+    // ── 需求四：店家差額移轉 Modal ──
+    let transferState = null;
+
+    function openTransferModal(itemName, maxQty) {
+      const group = groupedItems().find(g => g.item === itemName);
+      const refOrder = group && group.orders.length ? group.orders[group.orders.length - 1] : null;
+      transferState = {
+        itemName,
+        area: group ? (group.areas[0] || "待定位") : "待定位",
+        batch: refOrder ? refOrder.batch : (activeBatch === "all" ? "無日期" : activeBatch),
+        date: refOrder ? refOrder.date : (activeBatch === "all" ? "" : activeBatch),
+        maxQty: Number(maxQty || 0)
+      };
+      document.getElementById("transferTitle").textContent = `移轉「${itemName.replace(/^\d+\s*/, "")}」`;
+      document.getElementById("transferMaxQty").textContent = transferState.maxQty;
+      const qtyInput = document.getElementById("transferQtyInput");
+      qtyInput.max = transferState.maxQty;
+      qtyInput.value = transferState.maxQty;
+      document.getElementById("transferCustomerInput").value = "";
+      const names = Array.from(new Set(
+        (currentViewState().orders || []).map((o, i) => normalizeOrder(o, i).customer)
+      )).filter(n => n && n !== STORE_CUSTOMER);
+      document.getElementById("transferCustomerList").innerHTML = names.map(n => `<option value="${escapeHtml(n)}"></option>`).join("");
+      document.getElementById("transferModal").classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeTransferModal() {
+      document.getElementById("transferModal").classList.add("hidden");
+      document.body.style.overflow = "";
+      transferState = null;
+    }
+
+    document.getElementById("collectRows").addEventListener("click", event => {
+      const btn = event.target.closest("[data-transfer-item]");
+      if (!btn) return;
+      openTransferModal(btn.dataset.transferItem, btn.dataset.transferQty);
+    });
+
+    document.getElementById("transferCancel").addEventListener("click", closeTransferModal);
+    document.getElementById("transferModal").addEventListener("click", event => {
+      if (event.target.id === "transferModal") closeTransferModal();
+    });
+
+    document.getElementById("transferConfirm").addEventListener("click", () => {
+      if (!transferState) return;
+      const qty = clampQtyToHalf(document.getElementById("transferQtyInput").value || 0);
+      const customer = normalizeCustomer(document.getElementById("transferCustomerInput").value);
+      if (!customer) { alert("請輸入客人姓名"); return; }
+      if (qty <= 0 || qty > transferState.maxQty + 0.001) { alert(`移轉數量需介於 0.5 ～ ${transferState.maxQty} 之間`); return; }
+
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
+      }
+      _target.orders = _target.orders || [];
+      const order = {
+        seq: Math.max(0, ..._target.orders.map(o => Number(o.seq || 0))) + 1,
+        date: transferState.date,
+        batch: transferState.batch,
+        customer,
+        source: "店家移轉",
+        area: transferState.area,
+        item: transferState.itemName,
+        qty,
+        note: "由「店」進位差額移轉"
+      };
+      _target.orders.push(order);
+      if (_archives) saveArchives(_archives); else saveState();
+      closeTransferModal();
+      renderAll();
+      alert(`✅ 已將「${order.item}」x${qty} 移轉給「${customer}」`);
+    });
+
+    // ── 需求六：客人退貨/退款（隱蔽於分帳明細內層，需先解鎖帳款鎖定開關） ──
+    document.getElementById("collectRows").addEventListener("click", event => {
+      const btn = event.target.closest("[data-return-item]");
+      if (!btn) return;
+      openReturnFlow(btn.dataset.returnCustomer, btn.dataset.returnItem, Number(btn.dataset.returnQty || 0));
+    });
+
+    function openReturnFlow(customer, itemName, lineQty) {
+      const vs = currentViewState();
+      const lock = ensureFinanceLock(vs);
+      if (lock.locked) {
+        alert("🔒 帳款目前已鎖定，請先到上方「帳款鎖定」解鎖後再進行退貨。");
+        return;
+      }
+      // 同一位客人、同一項商品，扣掉先前已退過的數量，避免重複退貨超過原本購買量
+      const alreadyReturned = (vs.returns || [])
+        .filter(r => r.customer === customer && r.item === itemName)
+        .reduce((sum, r) => sum + Number(r.qty || 0), 0);
+      const maxQty = Math.max(0, Math.round((lineQty - alreadyReturned) * 2) / 2);
+      if (maxQty <= 0) { alert("這項商品可退的數量已經退完了。"); return; }
+      const qtyStr = prompt(`「${customer}」－「${itemName.replace(/^\d+\s*/, "")}」退貨數量（最多 ${maxQty}）`, String(maxQty));
+      if (qtyStr === null) return;
+      const qty = clampQtyToHalf(qtyStr);
+      if (qty <= 0 || qty > maxQty + 0.001) { alert(`退貨數量需介於 0.5 ～ ${maxQty} 之間`); return; }
+      if (!confirm(`確定要幫「${customer}」退貨「${itemName.replace(/^\d+\s*/, "")}」x${qty} 嗎？此動作會自動從其分帳總額中扣除商品金額與代購費。`)) return;
+
+      const group = groupedItems().find(g => g.item === itemName);
+      const purchase = group ? purchaseFor(group.item, group.totalQty, group.areas[0] || "待定位") : null;
+      const unitPrice = purchase ? Number(purchase.price || 0) : 0;
+      const unitFee = purchase ? calcItemFee(purchase, unitPrice) : 0;
+      const amount = -Math.round(qty * unitPrice);
+      const fee = -Math.round(qty * unitFee);
+
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
+      }
+      const _fmtD = d => (d.getMonth() + 1) + "/" + d.getDate();
+      const _fmtDT = d => _fmtD(d) + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      _target.returns = _target.returns || [];
+      _target.returns.push({
+        seq: Math.max(0, ..._target.returns.map(r => Number(r.seq || 0))) + 1,
+        customer,
+        item: itemName,
+        qty,
+        amount,
+        fee,
+        at: _fmtDT(new Date()),
+        note: "客人退貨"
+      });
+      if (_archives) saveArchives(_archives); else saveState();
+      renderAll();
+      alert(`✅ 已登記退貨：${itemName.replace(/^\d+\s*/, "")} 退貨 x${qty}，金額 ${money(amount)}`);
+    }
+
     function renderAll() {
       renderWeekSwitcher();
       renderItems();
       renderCheckout();
       renderSplit();
       renderCollect();
+      renderReconcile();
+      renderFinanceLock();
+      renderCashReconcile();
       renderSummary();
       renderCancelledOrders();
       if (!isViewingArchive()) saveState();
+    }
+
+    // 需求七：實體現金核對看板 -- 已收 / 未收（欠款）/ 應收大計
+    function renderCashReconcile() {
+      const el = document.getElementById("cashReconcileBoard");
+      if (!el) return;
+      const vs = currentViewState();
+      const customers = buildCustomerTotals();
+      const cs = vs.customerStatus || {};
+      let collected = 0, outstanding = 0;
+      customers.forEach((data, name) => {
+        if (name === STORE_CUSTOMER) return; // 店不是收款對象，不列入現金核對
+        const total = data.goods + data.fee;
+        if ((cs[name] || {}).paid) collected += total; else outstanding += total;
+      });
+      (vs.debts || []).forEach(d => {
+        const total = (d.goods || 0) + (d.fee || 0);
+        if (d.paid) collected += total; else outstanding += total;
+      });
+      document.getElementById("cashCollectedTotal").textContent = money(collected);
+      document.getElementById("cashOutstandingTotal").textContent = money(outstanding);
+      document.getElementById("cashGrandTotal").textContent = money(collected + outstanding);
+    }
+
+    // 需求五：帳款鎖定開關與操作紀錄
+    function ensureFinanceLock(vs) {
+      if (!vs.financeLock) vs.financeLock = { locked: false, snapshot: null, log: [] };
+      if (!Array.isArray(vs.financeLock.log)) vs.financeLock.log = [];
+      return vs.financeLock;
+    }
+
+    function fmtLockTime(d) {
+      const p2 = n => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+    }
+
+    function renderFinanceLock() {
+      const vs = currentViewState();
+      const lock = ensureFinanceLock(vs);
+      const titleEl = document.getElementById("financeLockTitle");
+      const subEl = document.getElementById("financeLockSub");
+      const btn = document.getElementById("financeLockToggleBtn");
+      const banner = document.getElementById("financeLockBanner");
+      if (banner) banner.style.display = lock.locked ? "block" : "none";
+      if (!titleEl || !btn) return;
+      if (lock.locked) {
+        titleEl.textContent = "🔒 帳款已鎖定";
+        subEl.textContent = lock.lockedAt ? `鎖定於 ${lock.lockedAt}，商品卡異動不會影響已鎖定的金額` : "商品卡異動不會影響已鎖定的金額";
+        btn.textContent = "🔓 解鎖（緊急修改用）";
+        btn.style.background = "#eef6f4";
+        btn.style.color = "var(--accent-strong)";
+        btn.style.border = "1px solid var(--accent-strong)";
+      } else {
+        titleEl.textContent = "🔓 帳款尚未鎖定";
+        subEl.textContent = "建議完成當日採購初次對帳後鎖定，避免誤動影響金額";
+        btn.textContent = "🔒 鎖定帳款";
+        btn.style.background = "var(--accent-strong)";
+        btn.style.color = "white";
+        btn.style.border = "none";
+      }
+      const logBody = document.getElementById("financeLockLogBody");
+      if (logBody) {
+        logBody.innerHTML = lock.log.length
+          ? lock.log.slice().reverse().map(e => `<div style="padding:3px 0">${escapeHtml(e.at)} － 管理員【${e.action === "lock" ? "關閉開關" : "打開開關"}】${e.note ? `（${escapeHtml(e.note)}）` : ""}</div>`).join("")
+          : `<div style="padding:3px 0">尚無紀錄</div>`;
+      }
+    }
+
+    // 需求四：分層對帳面板
+    function renderReconcile() {
+      const el = document.getElementById("reconcilePanel");
+      if (!el) return;
+      const customers = buildCustomerTotals();
+      let customerGoods = 0, feeTotal = 0, storeGoods = 0;
+      customers.forEach((data, name) => {
+        if (name === STORE_CUSTOMER) storeGoods += data.goods;
+        else { customerGoods += data.goods; feeTotal += data.fee; }
+      });
+      const registered = registeredTotal();
+      const diff = Math.round((registered - customerGoods - storeGoods) * 100) / 100;
+      document.getElementById("reconcileRegistered").textContent = money(registered);
+      document.getElementById("reconcileCustomerGoods").textContent = money(customerGoods);
+      document.getElementById("reconcileStoreGoods").textContent = money(storeGoods);
+      const checkEl = document.getElementById("reconcileCheck");
+      if (Math.abs(diff) < 0.5) {
+        checkEl.textContent = "✅ 已對平";
+        checkEl.style.color = "var(--ok)";
+      } else {
+        checkEl.textContent = `⚠️ 差 ${money(diff)}`;
+        checkEl.style.color = "var(--danger)";
+      }
+      document.getElementById("reconcileFeeTotal").textContent = money(feeTotal);
+      document.getElementById("reconcileCustomerPayable").textContent = money(customerGoods + feeTotal);
     }
 
     function nextFriday() {
@@ -3904,10 +4292,10 @@
         });
         const totalAmount = lines.reduce((s, r) => s + r.amount, 0);
         const totalFee = lines.reduce((s, r) => s + r.fee, 0);
-        rows.push(["", customer + " 小計", "", "", "", "", "", "", "", totalAmount, totalFee, totalAmount + totalFee,
+        // 需求九：小計列 A 欄固定填「小計」二字，姓名欄維持乾淨的客人名稱；客人與客人之間不留空白列
+        rows.push(["小計", customer, "", "", "", "", "", "", "", totalAmount, totalFee, totalAmount + totalFee,
           cs.paid ? "已付款 " + (cs.paidAt || "") : "未付款",
           cs.picked ? "已取貨 " + (cs.pickedAt || cs.settledDate || "") : "未取貨"]);
-        rows.push([]);
       });
       const debts = vs.debts || [];
       if (debts.length) {
@@ -3987,12 +4375,11 @@
             r.item, r.qty, r.isPromo, r.unitPrice || "", r.amount || "", r.fee || "", r.subtotal || ""
           ]);
         });
-        // 客人小計列
+        // 客人小計列（需求九：A 欄固定填「小計」，姓名欄維持乾淨客人名稱，客人間不留空白列）
         const totalAmount = lines.reduce((s, r) => s + r.amount, 0);
         const totalFee    = lines.reduce((s, r) => s + r.fee, 0);
         const grandTotal  = totalAmount + totalFee;
-        rows.push(["", customer + " 小計", "", "", "", "", "", "", "", totalAmount, totalFee, grandTotal]);
-        rows.push([]); // 空行隔開
+        rows.push(["小計", customer, "", "", "", "", "", "", "", totalAmount, totalFee, grandTotal]);
       });
 
       if (rows.length <= 1) {
