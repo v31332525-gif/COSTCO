@@ -533,6 +533,50 @@
       padding: 0 2px;
     }
 
+    /* 需求二：最外層核心數據欄位（購買單價／代購費／總計金額） */
+    .item-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .item-stats .stat {
+      background: #eef6f4;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 4px;
+      text-align: center;
+    }
+
+    .item-stats .stat-label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .item-stats .stat-value {
+      display: block;
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--accent-strong);
+      margin-top: 2px;
+    }
+
+    .compact-money-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .compact-money-total {
+      font-weight: 900;
+      color: var(--accent-strong);
+    }
+
     /* 改週 Modal */
     .modal-overlay {
       position: fixed;
@@ -1477,7 +1521,7 @@
           <strong id="metricItems">0</strong>
         </div>
         <div class="metric">
-          <span>已拿</span>
+          <span>已處理數量</span>
           <strong id="metricDone">0</strong>
         </div>
         <div class="metric">
@@ -2226,6 +2270,19 @@
       return effectiveBoughtQty(item, purchase) * Number(purchase.price || 0);
     }
 
+    // 這個品項「代購費」總額（已買數量 × 每件代購費）
+    function itemFeeTotal(item) {
+      const purchase = purchaseFor(item.item, item.totalQty);
+      if (purchase.status === "missing") return 0;
+      const unitFee = calcItemFee(purchase, purchase.price);
+      return effectiveBoughtQty(item, purchase) * unitFee;
+    }
+
+    // 這個品項「總計金額」＝商品小計 ＋ 代購費總額
+    function itemGrandTotal(item) {
+      return itemSubtotal(item) + itemFeeTotal(item);
+    }
+
     function registeredTotal() {
       return groupedItems().reduce((sum, item) => sum + itemSubtotal(item), 0);
     }
@@ -2285,6 +2342,11 @@
               </label>
               <label>小計<input value="${money(itemSubtotal(item))}" readonly></label>
             </div>
+            <div class="item-stats">
+              <div class="stat"><span class="stat-label">購買單價</span><span class="stat-value">${money(purchase.price)}</span></div>
+              <div class="stat"><span class="stat-label">代購費</span><span class="stat-value">${money(itemFeeTotal(item))}</span></div>
+              <div class="stat"><span class="stat-label">總計金額</span><span class="stat-value">${money(itemGrandTotal(item))}</span></div>
+            </div>
             <div class="fee-preview">
               代購費：每件 +$${calcItemFee(purchase, purchase.price)}
               ${purchase.feeOverride ? "（手動指定）" : purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
@@ -2338,6 +2400,11 @@
             <div class="compact-customer-line">
               <span>${statusText(purchase.status)}</span>
               <span>${escapeHtml(customers)}</span>
+            </div>
+            <div class="compact-money-line">
+              <span>單價 ${money(purchase.price)}</span>
+              <span>代購費 ${money(itemFeeTotal(item))}</span>
+              <span class="compact-money-total">總計 ${money(itemGrandTotal(item))}</span>
             </div>
           </article>
         `;
@@ -2606,7 +2673,7 @@
     function renderSummary() {
       const items = groupedItems();
       document.getElementById("metricItems").textContent = items.length;
-      document.getElementById("metricDone").textContent = items.filter(item => purchaseFor(item.item, item.totalQty).status === "done").length;
+      document.getElementById("metricDone").textContent = items.filter(item => ["done", "missing"].includes(purchaseFor(item.item, item.totalQty).status)).length;
       document.getElementById("metricTotal").textContent = money(registeredTotal());
       const friday = nextFriday();
       document.getElementById("weekLabel").textContent = `${friday.getMonth() + 1}/${friday.getDate()} 週五`;
