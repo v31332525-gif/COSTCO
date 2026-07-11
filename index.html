@@ -1580,7 +1580,7 @@
       📦 目前查看的是歷史紀錄（唯讀），切回「本週」才能編輯
     </div>
     <div class="finance-lock-banner" id="financeLockBanner" style="display:none;margin:0 14px 10px;padding:8px 12px;border-radius:8px;background:#eef6f4;border:1px solid var(--accent-strong);color:var(--accent-strong);font-size:13px;font-weight:700">
-      🔒 帳款已鎖定：商品卡的異動不會影響已鎖定的應收總額與代購費（如需緊急修改，請到分帳頁解鎖）
+      🔒 分帳頁已匯入獨立運作：商品卡與訂單的異動不會再影響分帳頁的應收總額與代購費
     </div>
 
     <main>
@@ -1768,7 +1768,7 @@
               <div style="font-weight:800;color:var(--ink)" id="financeLockTitle">🔓 帳款尚未鎖定</div>
               <div style="font-size:12px;color:var(--muted);margin-top:2px" id="financeLockSub">建議完成當日採購初次對帳後鎖定，避免誤動影響金額</div>
             </div>
-            <button type="button" id="financeLockToggleBtn" style="min-height:40px;padding:0 16px;border-radius:20px;font-weight:800;font-size:13px">🔒 鎖定帳款</button>
+            <button type="button" id="financeLockToggleBtn" style="min-height:40px;padding:0 16px;border-radius:20px;font-weight:800;font-size:13px">🔒 鎖定並匯入到分帳頁</button>
           </div>
           <button type="button" id="financeLockLogToggleBtn" style="margin-top:8px;background:none;border:none;color:var(--accent-strong);font-size:12px;font-weight:700;padding:0;cursor:pointer">📜 查看操作紀錄 <span id="financeLockLogArrow">▶</span></button>
           <div id="financeLockLogBody" class="hidden" style="margin-top:6px;max-height:160px;overflow-y:auto;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px"></div>
@@ -1829,7 +1829,6 @@
         <div class="reconcile-panel" id="reconcilePanel" style="margin-bottom:14px;padding:12px 14px;background:#f7f5ef;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.9">
           <div style="font-weight:800;margin-bottom:6px;color:var(--ink)">🧾 分層對帳（自動核對，取代人工 Excel）</div>
           <div style="display:flex;justify-content:space-between"><span>已買總額（登記金額）</span><strong id="reconcileRegistered">$0</strong></div>
-          <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>＋ 臨時加收（另外代購）商品金額</span><strong id="reconcileManualGoods">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 客戶商品分帳總額</span><strong id="reconcileCustomerGoods">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 店（進位差額）商品金額</span><strong id="reconcileStoreGoods">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed var(--line);margin-top:4px"><span>核對結果</span><strong id="reconcileCheck">✅ 已對平</strong></div>
@@ -1996,17 +1995,18 @@
     function calcItemFee(purchase, unitPrice) {
       const area = String(purchase.area || "");
       const price = Number(unitPrice || 0);
+      const under100Extra = (price > 0 && price < 100) ? 10 : 0; // 單價未滿100元，一律再+10（自動判斷或手動指定都適用；「免代購費」除外，維持真正0元）
       // Check manual override first
       const override = purchase.feeOverride;
       if (override === "free") return 0;
-      if (override === "bulky") return 30;
-      if (override === "hot") return 30;
-      if (override === "cold") return 30;
-      if (override === "normal") return 20;
+      if (override === "bulky") return 30 + under100Extra;
+      if (override === "hot") return 30 + under100Extra;
+      if (override === "cold") return 30 + under100Extra;
+      if (override === "normal") return 20 + under100Extra;
       // Auto-detect
-      if (purchase.bulky) return 30;                          // 大件：固定+30
+      if (purchase.bulky) return 30 + under100Extra;           // 大件：固定+30
       let fee = /冷藏|冷凍/.test(area) ? 30 : 20;           // 冷藏冷凍+30，其他+20
-      if (price > 0 && price < 100) fee += 10;              // 未滿100再+10
+      fee += under100Extra;                                  // 未滿100再+10
       return fee;
     }
     const state = loadState();
@@ -2404,10 +2404,7 @@
     }
 
     function registeredTotal() {
-      const vs = currentViewState();
-      if (vs.financeLock && vs.financeLock.locked && vs.financeLock.snapshot) {
-        return Object.values(vs.financeLock.snapshot).reduce((sum, c) => sum + Number(c.goods || 0), 0);
-      }
+      // 結帳頁只跟採買頁連動：永遠即時計算，不受分帳頁鎖定/匯入狀態影響
       return groupedItems().reduce((sum, item) => sum + itemSubtotal(item), 0);
     }
 
@@ -2474,7 +2471,7 @@
             <div class="fee-preview">
               代購費：每件 +$${calcItemFee(purchase, purchase.price)}
               ${purchase.feeOverride ? "（手動指定）" : purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
-              ${!purchase.feeOverride && Number(purchase.price) > 0 && Number(purchase.price) < 100 ? "＋未滿$100再+$10" : ""}
+              ${purchase.feeOverride !== "free" && Number(purchase.price) > 0 && Number(purchase.price) < 100 ? "＋未滿$100再+$10" : ""}
             </div>
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
@@ -2827,13 +2824,9 @@
       return surplus > 0.001 ? Math.round(surplus * 2) / 2 : 0;
     }
 
-    function buildCustomerTotals() {
-      const vs = currentViewState();
-      if (vs.financeLock && vs.financeLock.locked && vs.financeLock.snapshot) {
-        const frozen = new Map();
-        Object.keys(vs.financeLock.snapshot).forEach(name => frozen.set(name, vs.financeLock.snapshot[name]));
-        return frozen;
-      }
+    // 只算「原始採買 → 訂單分配 → 店(進位差額)」，不含退貨/臨時加收；
+    // 對帳面板固定用這個現算版本，分帳頁匯入前也用這個。
+    function liveBaseAllocation() {
       const customers = new Map();
       groupedItems().forEach(item => {
         const purchase = purchaseFor(item.item, item.totalQty);
@@ -2859,6 +2852,33 @@
           c.items.push({ name: item.item, qty: surplus, amount, fee: 0 });
         }
       });
+      return customers;
+    }
+
+    function cloneBaseMap(mapOrObj) {
+      const customers = new Map();
+      const entries = mapOrObj instanceof Map ? mapOrObj.entries() : Object.entries(mapOrObj || {});
+      for (const [name, data] of entries) {
+        customers.set(name, { goods: Number(data.goods || 0), fee: Number(data.fee || 0), items: (data.items || []).map(it => ({ ...it })), isStore: !!data.isStore });
+      }
+      return customers;
+    }
+
+    function baseMapToObj(map) {
+      const obj = {};
+      map.forEach((data, name) => { obj[name] = { goods: data.goods, fee: data.fee, items: data.items, isStore: !!data.isStore }; });
+      return obj;
+    }
+
+    // 需求（分帳頁面獨立化）：分帳頁一旦「匯入」過（按過鎖定鈕）就永遠用當時凍結的
+    // baseSnapshot 當底，不再重新抓採買/結帳最新數字；退貨/臨時加收持續疊加在上面，
+    // 且不受鎖定/解鎖狀態限制，隨時可以編輯。
+    function buildCustomerTotals() {
+      const vs = currentViewState();
+      const lock = vs.financeLock;
+      const customers = (lock && lock.baseSnapshot)
+        ? cloneBaseMap(lock.baseSnapshot)
+        : liveBaseAllocation();
       // 需求六：客人退貨/退款 -- 以負項紀錄自動從該客人分帳中扣除，並連動扣除代購費
       (vs.returns || []).forEach(ret => {
         if (!customers.has(ret.customer)) customers.set(ret.customer, { goods: 0, fee: 0, items: [] });
@@ -2955,6 +2975,8 @@
       const _vs = currentViewState();
       _vs.customerStatus = _vs.customerStatus || {};
       const _cs = _vs.customerStatus;
+      _vs.customerRemarks = _vs.customerRemarks || {};
+      const _remarks = _vs.customerRemarks;
       const _realEntries = entries.filter(([c]) => c !== STORE_CUSTOMER);
       const unpaidN = _realEntries.filter(([c]) => !(_cs[c] || {}).paid).length;
       const unpickedN = _realEntries.filter(([c]) => !(_cs[c] || {}).picked).length;
@@ -3008,6 +3030,9 @@
           <div class="collect-detail" id="collect-detail-${idx}">
             ${detailRows}
             <div class="cdi-total">商品 ${money(data.goods)} ＋ 代購費 ${money(data.fee)} ＝ 應收 <b>${money(total)}</b></div>
+            ${!isStore ? `<div class="cdi-remark" style="margin-top:6px">
+              <input type="text" class="remark-input" data-remark-customer="${escapeHtml(customer)}" placeholder="📝 備註（例如：改拿一瓶／改加代購費10元）" value="${escapeHtml(_remarks[customer] || "")}" style="width:100%;min-height:32px;border:1px dashed var(--line);border-radius:6px;padding:0 8px;font-size:12px;box-sizing:border-box;background:#fffdf7">
+            </div>` : ""}
           </div>
         </div>`;
         return { settled: !isStore && !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml, isStore, paid: !!cs.paid };
@@ -3090,6 +3115,25 @@
       renderCashReconcile();
     });
 
+    // 分帳頁客製化備註欄：先手動登記現場臨時異動（例如「改拿一瓶」「改加代購費10元」），
+    // 不受帳款鎖定狀態限制，隨時可以編輯；用 change（失焦/Enter）存檔，避免每個字都重繪打斷輸入。
+    document.getElementById("collectRows").addEventListener("change", event => {
+      const input = event.target.closest("[data-remark-customer]");
+      if (!input) return;
+      const name = input.dataset.remarkCustomer;
+      let _archives = null, _target = state;
+      if (isViewingArchive()) {
+        _archives = loadArchives();
+        _target = (_archives[viewingArchiveIndex] || {}).state;
+        if (!_target) return;
+      }
+      _target.customerRemarks = _target.customerRemarks || {};
+      const val = input.value.trim();
+      if (val) _target.customerRemarks[name] = val;
+      else delete _target.customerRemarks[name];
+      if (_archives) saveArchives(_archives); else saveState();
+    });
+
     // 已結清區塊展開/收合
     document.getElementById("collectRows").addEventListener("click", event => {
       if (!event.target.closest("#settledToggle")) return;
@@ -3117,22 +3161,26 @@
       const lock = ensureFinanceLock(_target);
       const now = new Date();
       if (!lock.locked) {
-        // 鎖定＝關閉開關：把目前算出的分帳結果凍結起來
-        const note = prompt("鎖定備註（選填，例如：完成當日採購初次對帳）", "完成當日採購初次對帳");
+        // 鎖定＝把目前的原始分帳結果「匯入」成分帳頁自己獨立的資料（只在第一次按下時凍結底稿）
+        const firstImport = !lock.baseSnapshot;
+        const note = prompt(
+          firstImport ? "鎖定備註（選填，例如：完成當日採購初次對帳，匯入分帳頁）" : "鎖定備註（選填）",
+          firstImport ? "完成當日採購初次對帳，匯入分帳頁" : ""
+        );
         if (note === null) return; // 取消
-        const snapshot = {};
-        buildCustomerTotals().forEach((v, k) => { snapshot[k] = v; });
+        if (firstImport) {
+          lock.baseSnapshot = baseMapToObj(liveBaseAllocation());
+        }
         lock.locked = true;
-        lock.snapshot = snapshot;
         lock.lockedAt = fmtLockTime(now);
         lock.log.push({ action: "lock", at: fmtLockTime(now), note: note.trim() });
       } else {
-        // 解鎖＝打開開關：僅供緊急加減單或跨週補單時使用
-        if (!confirm("確定要解鎖嗎？解鎖後，商品卡與訂單的異動將會重新影響應收總額與代購費，請只在緊急加單/減單/跨週補單時使用。")) return;
-        const note = prompt("解鎖原因（選填，例如：緊急加單）", "緊急加單");
+        // 解鎖：分帳頁的資料已經獨立運作，解鎖不會重新抓採買/結帳最新數字，
+        // 純粹只是關閉鎖定狀態顯示；退貨/臨時加收/備註等調整本來就隨時可編輯，不受這個開關限制。
+        if (!confirm("確定要解鎖嗎？分帳頁資料已經獨立運作，解鎖不會重新抓採買/結帳的最新數字，只是關閉鎖定狀態顯示。")) return;
+        const note = prompt("解鎖備註（選填）", "");
         if (note === null) return;
         lock.locked = false;
-        lock.snapshot = null;
         lock.lockedAt = null;
         lock.log.push({ action: "unlock", at: fmtLockTime(now), note: note.trim() });
       }
@@ -3181,6 +3229,28 @@
       if (_target.customerStatus[fromName]) {
         _target.customerStatus[intoName] = mergeCustomerStatusEntry(_target.customerStatus[intoName], _target.customerStatus[fromName]);
         delete _target.customerStatus[fromName];
+      }
+      // 分帳頁已獨立運作時，合併也要處理已匯入的 baseSnapshot、退貨、臨時加收、備註，
+      // 否則分帳頁看到的名字不會跟著改名
+      (_target.returns || []).forEach(r => { if (r.customer === fromName) r.customer = intoName; });
+      (_target.manualCharges || []).forEach(mc => { if (mc.customer === fromName) mc.customer = intoName; });
+      if (_target.customerRemarks && _target.customerRemarks[fromName] !== undefined) {
+        const fromRemark = _target.customerRemarks[fromName];
+        const intoRemark = _target.customerRemarks[intoName];
+        _target.customerRemarks[intoName] = intoRemark ? `${intoRemark}；${fromRemark}` : fromRemark;
+        delete _target.customerRemarks[fromName];
+      }
+      if (_target.financeLock && _target.financeLock.baseSnapshot && _target.financeLock.baseSnapshot[fromName]) {
+        const snap = _target.financeLock.baseSnapshot;
+        const fromData = snap[fromName];
+        if (snap[intoName]) {
+          snap[intoName].goods += fromData.goods;
+          snap[intoName].fee += fromData.fee;
+          snap[intoName].items = (snap[intoName].items || []).concat(fromData.items || []);
+        } else {
+          snap[intoName] = fromData;
+        }
+        delete snap[fromName];
       }
 
       if (_archives) saveArchives(_archives); else saveState();
@@ -3248,23 +3318,43 @@
         _target = (_archives[viewingArchiveIndex] || {}).state;
         if (!_target) return;
       }
-      _target.orders = _target.orders || [];
-      const order = {
-        seq: Math.max(0, ..._target.orders.map(o => Number(o.seq || 0))) + 1,
-        date: transferState.date,
-        batch: transferState.batch,
-        customer,
-        source: "店家移轉",
-        area: transferState.area,
-        item: transferState.itemName,
-        qty,
-        note: "由「店」進位差額移轉"
-      };
-      _target.orders.push(order);
+      const _lock = _target.financeLock;
+      if (_lock && _lock.baseSnapshot) {
+        // 分帳頁已獨立運作：直接在匯入的底稿上把「店」的數量移轉給客人，
+        // 不再新增訂單去帶動即時運算（新增訂單已經不會影響分帳頁了）
+        const snap = _lock.baseSnapshot;
+        const storeData = snap[STORE_CUSTOMER];
+        const storeItem = storeData && (storeData.items || []).find(it => it.name === transferState.itemName && it.qty >= qty - 0.001);
+        if (!storeData || !storeItem) { alert("找不到「店」這項進位差額，可能已經被移轉過了，請重新整理畫面再試一次。"); return; }
+        const unitPrice = storeItem.qty ? storeItem.amount / storeItem.qty : 0;
+        const amount = Math.round(qty * unitPrice);
+        storeItem.qty = Math.round((storeItem.qty - qty) * 2) / 2;
+        storeItem.amount -= amount;
+        storeData.goods -= amount;
+        if (storeItem.qty <= 0.001) storeData.items = storeData.items.filter(it => it !== storeItem);
+        if (!snap[customer]) snap[customer] = { goods: 0, fee: 0, items: [] };
+        snap[customer].goods += amount;
+        snap[customer].items.push({ name: transferState.itemName, qty, amount, fee: 0 });
+      } else {
+        _target.orders = _target.orders || [];
+        const order = {
+          seq: Math.max(0, ..._target.orders.map(o => Number(o.seq || 0))) + 1,
+          date: transferState.date,
+          batch: transferState.batch,
+          customer,
+          source: "店家移轉",
+          area: transferState.area,
+          item: transferState.itemName,
+          qty,
+          note: "由「店」進位差額移轉"
+        };
+        _target.orders.push(order);
+      }
+      const _transferredItemName = transferState.itemName;
       if (_archives) saveArchives(_archives); else saveState();
       closeTransferModal();
       renderAll();
-      alert(`✅ 已將「${order.item}」x${qty} 移轉給「${customer}」`);
+      alert(`✅ 已將「${_transferredItemName.replace(/^\d+\s*/, "")}」x${qty} 移轉給「${customer}」`);
     });
 
     // ── 需求六：客人退貨/退款（隱蔽於分帳明細內層，需先解鎖帳款鎖定開關） ──
@@ -3276,11 +3366,7 @@
 
     function openReturnFlow(customer, itemName, lineQty) {
       const vs = currentViewState();
-      const lock = ensureFinanceLock(vs);
-      if (lock.locked) {
-        alert("🔒 帳款目前已鎖定，請先到上方「帳款鎖定」解鎖後再進行退貨。");
-        return;
-      }
+      // 分帳頁面獨立運作：退貨不受帳款鎖定狀態限制，隨時可以登記
       // 同一位客人、同一項商品，扣掉先前已退過的數量，避免重複退貨超過原本購買量
       const alreadyReturned = (vs.returns || [])
         .filter(r => r.customer === customer && r.item === itemName)
@@ -3293,10 +3379,21 @@
       if (qty <= 0 || qty > maxQty + 0.001) { alert(`退貨數量需介於 0.5 ～ ${maxQty} 之間`); return; }
       if (!confirm(`確定要幫「${customer}」退貨「${itemName.replace(/^\d+\s*/, "")}」x${qty} 嗎？此動作會自動從其分帳總額中扣除商品金額與代購費。`)) return;
 
-      const group = groupedItems().find(g => g.item === itemName);
-      const purchase = group ? purchaseFor(group.item, group.totalQty, group.areas[0] || "待定位") : null;
-      const unitPrice = purchase ? Number(purchase.price || 0) : 0;
-      const unitFee = purchase ? calcItemFee(purchase, unitPrice) : 0;
+      // 用客人「目前分帳明細」裡這筆商品實際的單價/代購費來算退貨金額，
+      // 而不是重新去抓採買頁最新單價 -- 分帳頁匯入獨立運作後，採買頁單價可能已經改變，
+      // 退貨金額必須跟客人當初被收取的金額一致。
+      const custLine = (buildCustomerTotals().get(customer) || {}).items || [];
+      const lineItem = custLine.find(it => it.name === itemName && !it.isReturn && !it.isManual);
+      let unitPrice, unitFee;
+      if (lineItem && lineItem.qty) {
+        unitPrice = lineItem.amount / lineItem.qty;
+        unitFee = lineItem.fee / lineItem.qty;
+      } else {
+        const group = groupedItems().find(g => g.item === itemName);
+        const purchase = group ? purchaseFor(group.item, group.totalQty, group.areas[0] || "待定位") : null;
+        unitPrice = purchase ? Number(purchase.price || 0) : 0;
+        unitFee = purchase ? calcItemFee(purchase, unitPrice) : 0;
+      }
       const amount = -Math.round(qty * unitPrice);
       const fee = -Math.round(qty * unitFee);
 
@@ -3343,12 +3440,8 @@
     });
 
     document.getElementById("manualChargeBtn").addEventListener("click", () => {
+      // 分帳頁面獨立運作：臨時加收不受帳款鎖定狀態限制，隨時可以登記
       const vs = currentViewState();
-      const lock = ensureFinanceLock(vs);
-      if (lock.locked) {
-        alert("🔒 帳款目前已鎖定，請先到上方「帳款鎖定」解鎖後再加收。");
-        return;
-      }
       const customer = normalizeCustomer(document.getElementById("manualChargeCustomer").value);
       const item = document.getElementById("manualChargeItem").value.trim() || "臨時加收項目";
       const amount = Math.round(Number(document.getElementById("manualChargeAmount").value || 0));
@@ -3386,12 +3479,8 @@
     document.getElementById("collectRows").addEventListener("click", event => {
       const btn = event.target.closest("[data-remove-manual-seq]");
       if (!btn) return;
+      // 分帳頁面獨立運作：取消臨時加收不受帳款鎖定狀態限制
       const vs = currentViewState();
-      const lock = ensureFinanceLock(vs);
-      if (lock.locked) {
-        alert("🔒 帳款目前已鎖定，請先到上方「帳款鎖定」解鎖後再取消加收。");
-        return;
-      }
       if (!confirm("確定要取消這筆臨時加收嗎？")) return;
       let _archives = null, _target = state;
       if (isViewingArchive()) {
@@ -3443,8 +3532,9 @@
 
     // 需求五：帳款鎖定開關與操作紀錄
     function ensureFinanceLock(vs) {
-      if (!vs.financeLock) vs.financeLock = { locked: false, snapshot: null, log: [] };
+      if (!vs.financeLock) vs.financeLock = { locked: false, snapshot: null, baseSnapshot: null, log: [] };
       if (!Array.isArray(vs.financeLock.log)) vs.financeLock.log = [];
+      if (vs.financeLock.baseSnapshot === undefined) vs.financeLock.baseSnapshot = null;
       return vs.financeLock;
     }
 
@@ -3460,19 +3550,20 @@
       const subEl = document.getElementById("financeLockSub");
       const btn = document.getElementById("financeLockToggleBtn");
       const banner = document.getElementById("financeLockBanner");
-      if (banner) banner.style.display = lock.locked ? "block" : "none";
+      const imported = !!lock.baseSnapshot;
+      if (banner) banner.style.display = imported ? "block" : "none";
       if (!titleEl || !btn) return;
-      if (lock.locked) {
-        titleEl.textContent = "🔒 帳款已鎖定";
-        subEl.textContent = lock.lockedAt ? `鎖定於 ${lock.lockedAt}，商品卡異動不會影響已鎖定的金額` : "商品卡異動不會影響已鎖定的金額";
-        btn.textContent = "🔓 解鎖（緊急修改用）";
+      if (imported) {
+        titleEl.textContent = lock.locked ? "🔒 已匯入分帳頁（鎖定中）" : "🔓 已匯入分帳頁（已解鎖）";
+        subEl.textContent = (lock.lockedAt ? `${lock.locked ? "鎖定" : "解鎖"}於 ${lock.lockedAt}，` : "") + "分帳頁已獨立運作：採買/結帳異動不會再影響分帳頁；退貨／臨時加收／備註隨時都能直接在分帳頁編輯";
+        btn.textContent = lock.locked ? "🔓 解鎖（僅關閉狀態顯示）" : "🔒 標記為鎖定";
         btn.style.background = "#eef6f4";
         btn.style.color = "var(--accent-strong)";
         btn.style.border = "1px solid var(--accent-strong)";
       } else {
-        titleEl.textContent = "🔓 帳款尚未鎖定";
-        subEl.textContent = "建議完成當日採購初次對帳後鎖定，避免誤動影響金額";
-        btn.textContent = "🔒 鎖定帳款";
+        titleEl.textContent = "🔓 尚未匯入分帳頁";
+        subEl.textContent = "採買/結帳異動目前仍會即時反映到分帳頁；按下方按鈕＝把目前分帳結果匯入分帳頁，之後分帳頁就會獨立運作";
+        btn.textContent = "🔒 鎖定並匯入到分帳頁";
         btn.style.background = "var(--accent-strong)";
         btn.style.color = "white";
         btn.style.border = "none";
@@ -3486,21 +3577,21 @@
     }
 
     // 需求四：分層對帳面板
+    // 分層對帳：只鎖定「當天原始採買 vs 原始分帳」這兩個數字，退貨／臨時加收／
+    // 分帳頁後續手動調整一律不影響這裡（避免產生無謂的差額報錯）。對平之後這個
+    // 面板的使命就結束了，不會因為分帳頁後來的變動又跳出警示。
     function renderReconcile() {
       const el = document.getElementById("reconcilePanel");
       if (!el) return;
-      const customers = buildCustomerTotals();
+      const customers = liveBaseAllocation();
       let customerGoods = 0, feeTotal = 0, storeGoods = 0;
       customers.forEach((data, name) => {
         if (name === STORE_CUSTOMER) storeGoods += data.goods;
         else { customerGoods += data.goods; feeTotal += data.fee; }
       });
-      // 臨時加收（另外代購）的商品金額不是本週 Costco 收據的一部分，核對時要另外加回登記金額那一側
-      const manualGoods = (currentViewState().manualCharges || []).reduce((sum, mc) => sum + Number(mc.amount || 0), 0);
       const registered = registeredTotal();
-      const diff = Math.round((registered + manualGoods - customerGoods - storeGoods) * 100) / 100;
+      const diff = Math.round((registered - customerGoods - storeGoods) * 100) / 100;
       document.getElementById("reconcileRegistered").textContent = money(registered);
-      document.getElementById("reconcileManualGoods").textContent = money(manualGoods);
       document.getElementById("reconcileCustomerGoods").textContent = money(customerGoods);
       document.getElementById("reconcileStoreGoods").textContent = money(storeGoods);
       const checkEl = document.getElementById("reconcileCheck");
