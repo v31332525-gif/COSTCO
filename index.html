@@ -1994,19 +1994,20 @@
 
     function calcItemFee(purchase, unitPrice) {
       const area = String(purchase.area || "");
-      const price = Number(unitPrice || 0);
-      const under100Extra = (price > 0 && price < 100) ? 10 : 0; // 單價未滿100元，一律再+10（自動判斷或手動指定都適用；「免代購費」除外，維持真正0元）
+      // 「未滿100+10」改成手動獨立勾選（purchase.extra10），不再由單價自動判斷；
+      // 「免代購費」維持真正0元，不疊加這個+10。
+      const extra10 = purchase.extra10 ? 10 : 0;
       // Check manual override first
       const override = purchase.feeOverride;
       if (override === "free") return 0;
-      if (override === "bulky") return 30 + under100Extra;
-      if (override === "hot") return 30 + under100Extra;
-      if (override === "cold") return 30 + under100Extra;
-      if (override === "normal") return 20 + under100Extra;
+      if (override === "bulky") return 30 + extra10;
+      if (override === "hot") return 30 + extra10;
+      if (override === "cold") return 30 + extra10;
+      if (override === "normal") return 20 + extra10;
       // Auto-detect
-      if (purchase.bulky) return 30 + under100Extra;           // 大件：固定+30
+      if (purchase.bulky) return 30 + extra10;           // 大件：固定+30
       let fee = /冷藏|冷凍/.test(area) ? 30 : 20;           // 冷藏冷凍+30，其他+20
-      fee += under100Extra;                                  // 未滿100再+10
+      fee += extra10;                                     // 手動勾選「未滿100+10」
       return fee;
     }
     const state = loadState();
@@ -2471,13 +2472,14 @@
             <div class="fee-preview">
               代購費：每件 +$${calcItemFee(purchase, purchase.price)}
               ${purchase.feeOverride ? "（手動指定）" : purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
-              ${purchase.feeOverride !== "free" && Number(purchase.price) > 0 && Number(purchase.price) < 100 ? "＋未滿$100再+$10" : ""}
+              ${purchase.feeOverride !== "free" && purchase.extra10 ? "＋10（未滿100）" : ""}
             </div>
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
               <button class="fee-tag-btn ${purchase.feeOverride === 'free' ? 'active' : ''}" data-fee-override="free" data-override-item="${escapeHtml(item.item)}">0 元</button>
               <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">加 20 元</button>
               <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">加 30 元</button>
+              <button class="fee-tag-btn ${purchase.extra10 ? 'active' : ''}" data-extra10-item="${escapeHtml(item.item)}">＋10（未滿100）</button>
             </div>
             <div class="status-row" style="grid-template-columns:1fr 1fr 1fr">
               <button data-status="done" class="${purchase.status === "done" ? "selected" : ""}">已拿到</button>
@@ -3999,6 +4001,13 @@
         const p = purchaseFor(event.target.dataset.overrideItem);
         const val = event.target.dataset.feeOverride;
         p.feeOverride = (val && p.feeOverride !== val) ? val : undefined;
+        renderAll();
+        return;
+      }
+      if (event.target.dataset.extra10Item !== undefined) {
+        // 獨立的「未滿100+10」手動按鈕：自己決定要不要加，不受單價自動判斷
+        const p = purchaseFor(event.target.dataset.extra10Item);
+        p.extra10 = !p.extra10;
         renderAll();
         return;
       }
