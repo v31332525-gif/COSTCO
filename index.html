@@ -15,65 +15,119 @@
   <meta name="theme-color" content="#e02020">
   <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%E5%AE%B6%E5%AE%B6%E5%A5%BD%E4%BE%BF%E5%88%A9%E5%95%86%E5%BA%97%22%2C%22short_name%22%3A%22%E5%AE%B6%E5%AE%B6%E5%A5%BD%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ffffff%22%2C%22theme_color%22%3A%22%23e02020%22%7D">
 
-  <!-- Firebase SDK -->
+  <!-- Supabase 同步＋登入 -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-    // ── 請把下面換成你自己的 Firebase 設定 ──
-    const firebaseConfig = {
-      apiKey: "AIzaSyA7b4WSq9_PlY26StAInPQhMBjvtvwFAAc",
-      authDomain: "costco-7a296.firebaseapp.com",
-      databaseURL: "https://costco-7a296-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "costco-7a296",
-      storageBucket: "costco-7a296.firebasestorage.app",
-      messagingSenderId: "1048645570213",
-      appId: "1:1048645570213:web:87e87baac5f1825ef3074c"
-    };
-    // ──────────────────────────────────────
+    // ── Supabase 設定 ──
+    const SUPABASE_URL = "https://hlubbsfxjiaqxxghhdld.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_3XOjaff74E4MOuo4zowueQ_kug367W9";
+    const ROW_ID = "costco-helper-v1";
+    // ──────────────────
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getDatabase(app);
-    const DATA_REF = "costco-helper-v1";
-
-    // 商品名含 . # $ / [ ] 會被 Firebase 拒絕，存取時自動編碼/解碼
-    const BADKEY = /[.#$\/\[\]]/g;
-    function encKey(k) { return String(k).replace(BADKEY, c => "％" + c.charCodeAt(0).toString(16).padStart(2, "0")); }
-    function decKey(k) { return String(k).replace(/％([0-9a-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16))); }
-    function encAll(v) { if (Array.isArray(v)) return v.map(encAll); if (v && typeof v === "object") { const o = {}; for (const k in v) o[encKey(k)] = encAll(v[k]); return o; } return v; }
-    function decAll(v) { if (Array.isArray(v)) return v.map(decAll); if (v && typeof v === "object") { const o = {}; for (const k in v) o[decKey(k)] = decAll(v[k]); return o; } return v; }
-
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window._sb = supabase; // 除錯用
 
     let _suppressNext = false; // 避免自己寫入後又觸發自己重繪
 
-    // 把 Firebase 橋接掛到 window，讓主腳本呼叫
     window._fb = {
       save(stateObj) {
         _suppressNext = true;
-        try { set(ref(db, DATA_REF), encAll(stateObj)).catch(err => {
-          console.warn("Firebase save error:", err);
-          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
-          _suppressNext = false;
-        }); } catch (err) {
-          console.warn("Firebase save error:", err);
-          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
-          _suppressNext = false;
-        }
+        supabase.from("app_state")
+          .upsert({ id: ROW_ID, data: stateObj, updated_at: new Date().toISOString() })
+          .then(({ error }) => {
+            if (error) {
+              console.warn("Supabase save error:", error);
+              window.dispatchEvent(new CustomEvent("fb-error", { detail: error.message }));
+              _suppressNext = false;
+            }
+          });
       },
       listen(callback) {
-        onValue(ref(db, DATA_REF), snapshot => {
-          if (_suppressNext) { _suppressNext = false; return; }
-          const data = decAll(snapshot.val());
-          if (data) callback(data);
-        }, err => {
-          console.warn("Firebase listen error:", err);
-          window.dispatchEvent(new CustomEvent("fb-error", { detail: String(err) }));
-        });
+        supabase.from("app_state").select("data").eq("id", ROW_ID).maybeSingle()
+          .then(({ data, error }) => {
+            if (error) {
+              console.warn("Supabase load error:", error);
+              window.dispatchEvent(new CustomEvent("fb-error", { detail: error.message }));
+              return;
+            }
+            if (data && data.data) callback(data.data);
+          });
+        supabase.channel("app_state_changes")
+          .on("postgres_changes",
+            { event: "*", schema: "public", table: "app_state", filter: "id=eq." + ROW_ID },
+            payload => {
+              if (_suppressNext) { _suppressNext = false; return; }
+              if (payload.new && payload.new.data) callback(payload.new.data);
+            })
+          .subscribe();
       }
     };
 
-    // 通知主腳本 Firebase 已就緒
-    window.dispatchEvent(new Event("fb-ready"));
+    // ── 登入畫面 ──
+    const overlay = document.createElement("div");
+    overlay.id = "loginOverlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:#f7f5ef;display:none;align-items:center;justify-content:center;padding:20px;";
+    overlay.innerHTML = `
+      <form id="loginForm" style="background:#fffdfa;border:1px solid #ddd8cd;border-radius:16px;box-shadow:0 10px 30px rgba(32,33,36,.08);padding:28px 24px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:20px;font-weight:700;text-align:center;">🛒 好市多代購採買助手</div>
+        <div style="font-size:13px;color:#69665e;text-align:center;">請先登入才能使用</div>
+        <input id="loginEmail" type="email" required placeholder="Email" autocomplete="username" style="padding:12px;border:1px solid #ddd8cd;border-radius:10px;font-size:16px;">
+        <input id="loginPassword" type="password" required placeholder="密碼" autocomplete="current-password" style="padding:12px;border:1px solid #ddd8cd;border-radius:10px;font-size:16px;">
+        <button type="submit" style="padding:12px;border:none;border-radius:10px;background:#0f766e;color:#fff;font-size:16px;font-weight:600;cursor:pointer;">登入</button>
+        <div id="loginError" style="color:#b42318;font-size:13px;text-align:center;display:none;"></div>
+      </form>`;
+
+    function showLogin() {
+      if (!overlay.isConnected) document.body.appendChild(overlay);
+      overlay.style.display = "flex";
+    }
+    function hideLogin() { overlay.style.display = "none"; }
+
+    let _started = false;
+    function startApp() {
+      hideLogin();
+      addLogoutBtn();
+      if (_started) return;
+      _started = true;
+      window.dispatchEvent(new Event("fb-ready"));
+    }
+
+    overlay.querySelector("#loginForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const errEl = overlay.querySelector("#loginError");
+      errEl.style.display = "none";
+      const email = overlay.querySelector("#loginEmail").value.trim();
+      const password = overlay.querySelector("#loginPassword").value;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        errEl.textContent = "登入失敗：帳號或密碼不對";
+        errEl.style.display = "block";
+        return;
+      }
+      startApp();
+    });
+
+    function addLogoutBtn() {
+      if (document.getElementById("logoutBtn")) return;
+      const anchor = document.getElementById("syncStatus");
+      if (!anchor) return;
+      const btn = document.createElement("div");
+      btn.id = "logoutBtn";
+      btn.className = anchor.className;
+      btn.textContent = "登出";
+      btn.title = "登出此裝置";
+      btn.style.cursor = "pointer";
+      btn.addEventListener("click", async () => {
+        if (!confirm("確定要登出嗎？")) return;
+        await supabase.auth.signOut();
+        location.reload();
+      });
+      anchor.after(btn);
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) startApp(); else showLogin();
   </script>
   <style>
     :root {
@@ -1555,7 +1609,7 @@
       <div class="topline">
         <h1>好市多代購採買助手</h1>
         <div style="display:flex;align-items:center;gap:8px">
-          <div class="date-pill" id="syncStatus" title="Firebase 連線狀態">⚪ 連線中…</div>
+          <div class="date-pill" id="syncStatus" title="同步狀態">⚪ 連線中…</div>
           <div class="date-pill" id="weekLabel">本週五</div>
         </div>
       </div>
@@ -4428,7 +4482,7 @@
       renderAll();
     });
 
-    // ── Firebase 即時同步 ──
+    // ── 雲端即時同步（Supabase）──
     function applyRemoteState(remote) {
       if (remote.version !== 7) return; // 版本不符，略過
       Object.assign(state, remote);
