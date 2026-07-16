@@ -3285,8 +3285,9 @@
       if (!listEl) return;
       const recs = historyRecords();
       const q = historySearchText.toLowerCase();
-      const shown = !q ? recs : recs.filter(r =>
-        String(r.n || "").toLowerCase().includes(q) || String(r.c || "").toLowerCase().includes(q));
+      const all = recs.map((r, i) => ({ r, i }));
+      const shown = !q ? all : all.filter(e =>
+        String(e.r.n || "").toLowerCase().includes(q) || String(e.r.c || "").toLowerCase().includes(q));
       if (statsEl) statsEl.textContent = recs.length ? ("共 " + recs.length + " 筆紀錄" + (q ? ("，符合 " + shown.length + " 筆") : "")) : "";
       if (!shown.length) {
         listEl.innerHTML = '<div class="empty">' + (q ? "找不到符合的紀錄" : "還沒有歷史紀錄。先從下方匯入舊資料，之後每次「歸檔本週」會自動記錄") + '</div>';
@@ -3294,20 +3295,20 @@
       }
       // 依商品分組（最近買過的排前面）
       const groups = new Map();
-      shown.forEach(r => {
-        const k = r.n;
+      shown.forEach(e => {
+        const k = e.r.n;
         if (groups.has(k)) { groups.delete(k); }
         groups.set(k, null);
       });
       const byName = new Map();
-      shown.forEach(r => { if (!byName.has(r.n)) byName.set(r.n, []); byName.get(r.n).push(r); });
+      shown.forEach(e => { if (!byName.has(e.r.n)) byName.set(e.r.n, []); byName.get(e.r.n).push(e); });
       const names = Array.from(groups.keys()).reverse();
       const expandAll = !!q;
       let html = "";
       names.forEach(name => {
         const rows = byName.get(name) || [];
-        const prices = rows.map(r => Number(r.p || 0)).filter(p => p > 0);
-        const lastP = rows.slice().reverse().find(r => Number(r.p || 0) > 0);
+        const prices = rows.map(e => Number(e.r.p || 0)).filter(p => p > 0);
+        const lastP = rows.slice().reverse().find(e => Number(e.r.p || 0) > 0);
         const min = prices.length ? Math.min(...prices) : 0;
         const max = prices.length ? Math.max(...prices) : 0;
         const open = expandAll || historyOpenName === name;
@@ -3315,15 +3316,19 @@
           + '<div data-history-name="' + escapeHtml(name) + '" style="padding:10px 12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;cursor:pointer">'
           + '<span style="font-weight:800">' + escapeHtml(name) + '</span>'
           + '<span style="font-size:12px;color:var(--muted)">買過 ' + rows.length + ' 次'
-          + (lastP ? '　最近 <b style="color:var(--ink)">$' + lastP.p + '</b>' : '')
+          + (lastP ? '　最近 <b style="color:var(--ink)">$' + lastP.r.p + '</b>' : '')
           + (prices.length > 1 ? '　低 $' + min + '／高 $' + max : '')
-          + '　' + (open ? '▼' : '▶') + '</span></div>';
+          + '　' + (open ? '▼' : '▶')
+          + '　<button data-history-delgroup="' + escapeHtml(name) + '" title="刪除這個商品的全部紀錄" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0 2px">🗑️</button></span></div>';
         if (open) {
           html += '<div style="padding:0 12px 10px;font-size:12px;color:var(--muted)">'
-            + rows.slice().reverse().map(r =>
-              '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)">'
-              + '<span>' + escapeHtml(r.d || "—") + '　' + escapeHtml(r.c || "") + (Number(r.q) > 1 ? ' ×' + r.q : '') + (r.s ? ' <span style="color:var(--warn);font-weight:700">特價</span>' : '') + '</span>'
-              + '<b style="color:' + (Number(r.p) > 0 ? 'var(--ink)' : 'var(--muted)') + '">' + (Number(r.p) > 0 ? '$' + r.p : '—') + '</b></div>').join("")
+            + rows.slice().reverse().map(e => {
+              const r = e.r;
+              return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line);align-items:center">'
+                + '<span>' + escapeHtml(r.d || "—") + '　' + escapeHtml(r.c || "") + (Number(r.q) > 1 ? ' ×' + r.q : '') + (r.s ? ' <span style="color:var(--warn);font-weight:700">特價</span>' : '') + '</span>'
+                + '<span style="display:flex;gap:8px;align-items:center"><b style="color:' + (Number(r.p) > 0 ? 'var(--ink)' : 'var(--muted)') + '">' + (Number(r.p) > 0 ? '$' + r.p : '—') + '</b>'
+                + '<button data-history-del="' + e.i + '" title="刪除這筆" style="border:none;background:none;color:#b42318;cursor:pointer;font-size:13px;padding:0 2px">✕</button></span></div>';
+            }).join("")
             + '</div>';
         }
         html += '</div>';
@@ -3338,6 +3343,31 @@
     });
 
     document.getElementById("historyList").addEventListener("click", event => {
+      const delOne = event.target.closest("[data-history-del]");
+      if (delOne) {
+        const i = Number(delOne.dataset.historyDel);
+        const recs = historyRecords();
+        const r = recs[i];
+        if (r && confirm("確定刪除這筆紀錄？\n" + (r.d || "—") + "　" + (r.c || "") + "　" + r.n + (Number(r.p) > 0 ? "　$" + r.p : ""))) {
+          recs.splice(i, 1);
+          saveState();
+          renderHistory();
+        }
+        return;
+      }
+      const delGroup = event.target.closest("[data-history-delgroup]");
+      if (delGroup) {
+        const name = delGroup.dataset.historyDelgroup;
+        const recs = historyRecords();
+        const cnt = recs.filter(r => r.n === name).length;
+        if (cnt && confirm("確定刪除「" + name + "」的全部 " + cnt + " 筆紀錄？")) {
+          state.history = recs.filter(r => r.n !== name);
+          if (historyOpenName === name) historyOpenName = null;
+          saveState();
+          renderHistory();
+        }
+        return;
+      }
       const head = event.target.closest("[data-history-name]");
       if (!head) return;
       const name = head.dataset.historyName;
