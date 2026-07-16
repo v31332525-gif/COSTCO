@@ -1927,6 +1927,22 @@
         </div>
         <div class="split-list" id="splitList" style="display:none"></div>
       </section>
+
+      <section class="view" id="historyView">
+        <div style="margin-bottom:8px">
+          <input type="search" id="historySearch" placeholder="🔍 搜商品看歷史價格；搜客人名字看他買過什麼" style="width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:15px;background:white;box-sizing:border-box">
+        </div>
+        <div id="historyStats" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+        <div id="historyList"></div>
+        <div style="margin-top:14px;padding:12px 14px;background:white;border:1px solid var(--line);border-radius:10px">
+          <button type="button" id="historyImportToggleBtn" style="width:100%;background:none;border:none;padding:0;font-weight:800;color:var(--ink);font-size:13px;text-align:left;cursor:pointer;display:flex;justify-content:space-between">📥 匯入歷史紀錄（貼總檔格式）<span id="historyImportArrow">▶</span></button>
+          <div id="historyImportBody" style="display:none;margin-top:8px">
+            <textarea id="historyPaste" rows="6" placeholder="從總檔複製「連同標題列」貼上，會讀取：日期、姓名、編號-商品簡稱、數量、售價。日期建議含年份（例如 2025/5/15），才分得卺是哪一年買的" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box"></textarea>
+            <button class="primary" type="button" id="historyImportBtn" style="width:100%;min-height:40px;margin-top:6px;font-size:14px">匯入到歷史</button>
+            <div id="historyImportMsg" style="font-size:12px;color:var(--muted);margin-top:6px">重複的資料列會自動略過，可以放心重貼；之後每次「歸檔本週」也會自動把當週買到的商品記進來。</div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <nav aria-label="主要功能">
@@ -1934,6 +1950,7 @@
       <button data-view="checkoutView">結帳</button>
       <button data-view="ordersView">收單</button>
       <button data-view="splitView">分帳</button>
+      <button data-view="historyView">歷史</button>
     </nav>
   </div>
 
@@ -2202,6 +2219,19 @@
       // 歸檔後：商品/訂單歸零，未結清客人轉成「欠款提醒」帶到新的一週（不進採買清單）
       const _dl = new Date();
       const _dLabel = (_dl.getMonth() + 1) + "/" + _dl.getDate() + " 歸檔";
+
+      // 自動把本週的訂單記進歷史（商品價格＋客人購買紀錄）
+      try {
+        const _hRecs = historyRecords();
+        const _hDate = _dl.getFullYear() + "/" + (_dl.getMonth() + 1) + "/" + _dl.getDate();
+        const _hKey = r => [r.d, r.c, r.n, r.p].join("|");
+        const _hSet = new Set(_hRecs.map(_hKey));
+        state.orders.forEach(o => {
+          const _pu = (state.purchases || {})[o.item] || {};
+          const rec = { d: _hDate, c: o.customer, n: o.item, q: Number(o.qty || 1), p: Number(_pu.price || 0) };
+          if (!_hSet.has(_hKey(rec))) { _hSet.add(_hKey(rec)); _hRecs.push(rec); }
+        });
+      } catch (e) { console.warn("歷史記錄失敗", e); }
       const _cs2 = state.customerStatus || {};
       const _totals = buildCustomerTotals();
       const _newDebts = [];
@@ -3224,6 +3254,134 @@
       if (arrow) arrow.textContent = show ? "▼" : "▶";
     });
 
+    // ── 歷史紀錄（商品價格追蹤＋客人購買紀錄） ──
+    function historyRecords() { state.history = state.history || []; return state.history; }
+
+    let historySearchText = "";
+    let historyOpenName = null;
+
+    function renderHistory() {
+      const listEl = document.getElementById("historyList");
+      const statsEl = document.getElementById("historyStats");
+      if (!listEl) return;
+      const recs = historyRecords();
+      const q = historySearchText.toLowerCase();
+      const shown = !q ? recs : recs.filter(r =>
+        String(r.n || "").toLowerCase().includes(q) || String(r.c || "").toLowerCase().includes(q));
+      if (statsEl) statsEl.textContent = recs.length ? ("共 " + recs.length + " 筆紀錄" + (q ? ("，符合 " + shown.length + " 筆") : "")) : "";
+      if (!shown.length) {
+        listEl.innerHTML = '<div class="empty">' + (q ? "找不到符合的紀錄" : "還沒有歷史紀錄。先從下方匯入舊資料，之後每次「歸檔本週」會自動記錄") + '</div>';
+        return;
+      }
+      // 依商品分組（最近買過的排前面）
+      const groups = new Map();
+      shown.forEach(r => {
+        const k = r.n;
+        if (groups.has(k)) { groups.delete(k); }
+        groups.set(k, null);
+      });
+      const byName = new Map();
+      shown.forEach(r => { if (!byName.has(r.n)) byName.set(r.n, []); byName.get(r.n).push(r); });
+      const names = Array.from(groups.keys()).reverse();
+      const expandAll = !!q;
+      let html = "";
+      names.forEach(name => {
+        const rows = byName.get(name) || [];
+        const prices = rows.map(r => Number(r.p || 0)).filter(p => p > 0);
+        const lastP = rows.slice().reverse().find(r => Number(r.p || 0) > 0);
+        const min = prices.length ? Math.min(...prices) : 0;
+        const max = prices.length ? Math.max(...prices) : 0;
+        const open = expandAll || historyOpenName === name;
+        html += '<div style="background:white;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden">'
+          + '<div data-history-name="' + escapeHtml(name) + '" style="padding:10px 12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;cursor:pointer">'
+          + '<span style="font-weight:800">' + escapeHtml(name) + '</span>'
+          + '<span style="font-size:12px;color:var(--muted)">買過 ' + rows.length + ' 次'
+          + (lastP ? '　最近 <b style="color:var(--ink)">$' + lastP.p + '</b>' : '')
+          + (prices.length > 1 ? '　低 $' + min + '／高 $' + max : '')
+          + '　' + (open ? '▼' : '▶') + '</span></div>';
+        if (open) {
+          html += '<div style="padding:0 12px 10px;font-size:12px;color:var(--muted)">'
+            + rows.slice().reverse().map(r =>
+              '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)">'
+              + '<span>' + escapeHtml(r.d || "—") + '　' + escapeHtml(r.c || "") + (Number(r.q) > 1 ? ' ×' + r.q : '') + '</span>'
+              + '<b style="color:' + (Number(r.p) > 0 ? 'var(--ink)' : 'var(--muted)') + '">' + (Number(r.p) > 0 ? '$' + r.p : '—') + '</b></div>').join("")
+            + '</div>';
+        }
+        html += '</div>';
+      });
+      listEl.innerHTML = html;
+    }
+
+    document.getElementById("historySearch").addEventListener("input", event => {
+      historySearchText = event.target.value.trim();
+      historyOpenName = null;
+      renderHistory();
+    });
+
+    document.getElementById("historyList").addEventListener("click", event => {
+      const head = event.target.closest("[data-history-name]");
+      if (!head) return;
+      const name = head.dataset.historyName;
+      historyOpenName = historyOpenName === name ? null : name;
+      renderHistory();
+    });
+
+    document.getElementById("historyImportToggleBtn").addEventListener("click", () => {
+      const body = document.getElementById("historyImportBody");
+      const arrow = document.getElementById("historyImportArrow");
+      const show = body.style.display === "none";
+      body.style.display = show ? "block" : "none";
+      if (arrow) arrow.textContent = show ? "▼" : "▶";
+    });
+
+    function importHistoryFromText(text) {
+      const table = parseTableText(text);
+      if (table.length < 2) return 0;
+      const headers = table[0];
+      const idx = {
+        date: headerIndex(headers, ["日期"]),
+        customer: headerIndex(headers, ["姓名", "客人", "名稱"]),
+        item: headerIndex(headers, ["編號-商品簡稱", "商品", "品名"]),
+        qty: headerIndex(headers, ["數量"]),
+        price: headerIndex(headers, ["售價", "單價"])
+      };
+      if (idx.item < 0) return 0;
+      const recs = historyRecords();
+      const key = r => [r.d, r.c, r.n, r.p].join("|");
+      const existing = new Set(recs.map(key));
+      let added = 0;
+      table.slice(1).forEach(row => {
+        const n = String(row[idx.item] || "").trim();
+        if (!n) return;
+        const rec = {
+          d: idx.date >= 0 ? String(row[idx.date] || "").trim() : "",
+          c: idx.customer >= 0 ? normalizeCustomer(row[idx.customer]) : "",
+          n,
+          q: idx.qty >= 0 ? (Number(row[idx.qty] || 1) || 1) : 1,
+          p: idx.price >= 0 ? (Number(String(row[idx.price] || "").replace(/[$,\s]/g, "")) || 0) : 0
+        };
+        if (existing.has(key(rec))) return;
+        existing.add(key(rec));
+        recs.push(rec);
+        added++;
+      });
+      return added;
+    }
+
+    document.getElementById("historyImportBtn").addEventListener("click", () => {
+      const ta = document.getElementById("historyPaste");
+      const msg = document.getElementById("historyImportMsg");
+      const added = importHistoryFromText(ta.value);
+      if (added) {
+        ta.value = "";
+        msg.textContent = "✅ 已匯入 " + added + " 筆到歷史（重複的已自動略過），共 " + historyRecords().length + " 筆";
+        saveState();
+        renderHistory();
+      } else {
+        msg.textContent = "沒有讀到新資料：請確認有連同「標題列」一起複製貼上，且至少有「編號-商品簡稱」欄";
+      }
+    });
+
     // 需求五：帳款鎖定開關
     document.getElementById("financeLockToggleBtn").addEventListener("click", () => {
       let _archives = null, _target = state;
@@ -3579,6 +3737,7 @@
       renderCashReconcile();
       renderSummary();
       renderCancelledOrders();
+      renderHistory();
       if (!isViewingArchive()) saveState();
     }
 
