@@ -129,6 +129,7 @@
     const { data: { session } } = await supabase.auth.getSession();
     if (session) startApp(); else showLogin();
   </script>
+  <!-- ===== 樣式區（CSS） ===== -->
   <style>
     :root {
       color-scheme: light;
@@ -1616,6 +1617,7 @@
           <div class="date-pill" id="weekLabel">本週五</div>
         </div>
       </div>
+      <!-- ===== 頂部：本週統計列 ===== -->
       <section class="summary" aria-label="本週統計">
         <div class="metric">
           <span>商品</span>
@@ -1641,6 +1643,7 @@
     </div>
 
     <main>
+      <!-- ===== 採買頁（shopView） ===== -->
       <section class="view active" id="shopView">
         <div class="week-control">
           <div class="week-control-row">
@@ -1699,6 +1702,7 @@
         </div>
       </section>
 
+      <!-- ===== 結單頁（checkoutView） ===== -->
       <section class="view" id="checkoutView">
         <div class="check-panel">
           <div class="total-box">
@@ -1731,6 +1735,7 @@
         </div>
       </section>
 
+      <!-- ===== 訂單頁（ordersView） ===== -->
       <section class="view" id="ordersView">
         <div class="import-panel">
           <label>
@@ -1813,6 +1818,7 @@
 
       </section>
 
+      <!-- ===== 分帳頁（splitView） ===== -->
       <section class="view" id="splitView">
         <!-- 開新週 -->
         <div style="margin-bottom:14px;display:flex;justify-content:flex-end">
@@ -1928,6 +1934,7 @@
         <div class="split-list" id="splitList" style="display:none"></div>
       </section>
 
+      <!-- ===== 歷史頁（historyView） ===== -->
       <section class="view" id="historyView">
         <div style="margin-bottom:8px">
           <input type="search" id="historySearch" placeholder="🔍 搜商品看歷史價格；搜客人名字看他買過什麼" style="width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:15px;background:white;box-sizing:border-box">
@@ -1945,6 +1952,7 @@
       </section>
     </main>
 
+    <!-- ===== 底部導覽列（5個分頁按鈕） ===== -->
     <nav aria-label="主要功能">
       <button class="active" data-view="shopView">採買</button>
       <button data-view="checkoutView">結帳</button>
@@ -2052,6 +2060,7 @@
     </div>
   </div>
 
+  <!-- ===== 主程式（JavaScript）開始 ===== -->
   <script>
     const demoOrders = [
       { seq: 1, customer: "@小靜", source: "LINE 社群", area: "生活用品", item: "1768085 柯克蘭廚房紙巾", qty: 1, note: "特價" },
@@ -2069,6 +2078,7 @@
 
     const feePerCustomer = 50; // 保留備用，不再直接使用
 
+    // ===== 代購費計算規則 =====
     function calcItemFee(purchase, unitPrice) {
       const area = String(purchase.area || "");
       // 「未滿100+10」改成手動獨立勾選（purchase.extra10），不再由單價自動判斷；
@@ -2096,6 +2106,7 @@
     let searchText = "";
     let collectSearchText = "";
 
+    // ===== 狀態載入與儲存（Supabase 同步） =====
     function loadState() {
       const saved = localStorage.getItem("costco-helper-v1");
       if (saved) {
@@ -2121,6 +2132,7 @@
       };
     }
 
+    // ===== 週次歸檔系統（歸檔本週／歷史週切換） =====
     // ── 週次歸檔系統 ──
     // 所有歷史週用 costco-archive-v1 存，格式: [ { label, archivedAt, state } ]
     function loadArchives() {
@@ -2267,6 +2279,7 @@
       alert("✅ 已歸檔！可以從頂部的週次列切回查看。");
     });
 
+    // ===== 客人與商品名稱正規化 =====
     function normalizeCustomer(name) {
       let s = String(name || "").normalize("NFKC").replace(/＠/g, "@").trim();
       s = s.replace(/^@+/, ""); // 開頭有沒有加小老鼠(@)一律視為同一人
@@ -2515,6 +2528,7 @@
       return "";
     }
 
+    // ===== 採買頁畫面繪製（renderItems） =====
     function renderItems() {
       const list = document.getElementById("itemList");
       const compact = document.getElementById("compactList");
@@ -2641,6 +2655,7 @@
       });
     }
 
+    // ===== 結單頁畫面繪製（renderCheckout） =====
     function renderCheckout() {
       const vs = currentViewState();
       const regTotal = registeredTotal();
@@ -2700,6 +2715,7 @@
       return issues;
     }
 
+    // ===== 分帳頁畫面繪製（renderSplit） =====
     function renderSplit() {
       // customers Map: customer -> { rows(已買), missingRows(缺貨), waitingRows(拆單排下週), source }
       const customers = new Map();
@@ -2965,6 +2981,7 @@
     // 需求（分帳頁面獨立化）：分帳頁一旦「匯入」過（按過鎖定鈕）就永遠用當時凍結的
     // baseSnapshot 當底，不再重新抓採買/結帳最新數字；退貨/臨時加收持續疊加在上面，
     // 且不受鎖定/解鎖狀態限制，隨時可以編輯。
+    // ===== 收款金額計算（buildCustomerTotals） =====
     function buildCustomerTotals() {
       const vs = currentViewState();
       const lock = vs.financeLock;
@@ -3038,6 +3055,7 @@
       if (names.includes(prevInto)) intoSel.value = prevInto;
     }
 
+    // ===== 收款總覽畫面（renderCollect：已收款／已取貨／已結清） =====
     function renderCollect() {
       const customers = buildCustomerTotals();
 
@@ -3255,6 +3273,7 @@
     });
 
     // ── 歷史紀錄（商品價格追蹤＋客人購買紀錄） ──
+    // ===== 歷史頁（renderHistory／匯入歷史紀錄） =====
     function historyRecords() { state.history = state.history || []; return state.history; }
 
     let historySearchText = "";
@@ -3498,6 +3517,7 @@
     // ── 需求四：店家差額移轉 Modal ──
     let transferState = null;
 
+    // ===== 轉單與退貨流程 =====
     function openTransferModal(itemName, maxQty) {
       const group = groupedItems().find(g => g.item === itemName);
       const refOrder = group && group.orders.length ? group.orders[group.orders.length - 1] : null;
@@ -3728,6 +3748,7 @@
       renderAll();
     });
 
+    // ===== 總繪製 renderAll／現金核對／分層對帳／帳款鎖定 =====
     function renderAll() {
       renderWeekSwitcher();
       renderItems();
@@ -3865,6 +3886,7 @@
         .replaceAll('"', "&quot;");
     }
 
+    // ===== 貼上表格文字的解析工具 =====
     function parseTableText(text) {
       const lines = text.trim().split(/\r?\n/).filter(Boolean);
       if (!lines.length) return [];
@@ -4031,6 +4053,7 @@
       URL.revokeObjectURL(url);
     }
 
+    // ===== 取消訂單暫存區 =====
     function cancelOrder(seq) {
       const seqNum = Number(seq);
 
@@ -4171,6 +4194,7 @@
       });
     });
 
+    // ===== 匯入訂單執行（doImport） =====
     function doImport(mode) {
       const textarea = document.getElementById("pasteImport");
       const count = importRowsFromText(textarea.value, mode);
@@ -4405,6 +4429,7 @@
     let gotItNeed = 1;
     let numpadValue = "";
 
+    // ===== 數字盤 =====
     function openNumpad(input) {
       numpadTarget = input;
       numpadValue = String(Number(input.value) || "");
@@ -4551,6 +4576,7 @@
     let rescheduleAssigned = 0;
     let rescheduleWaiting = 0;
 
+    // ===== 取貨日／改週 Modal =====
     function nextNFridays(n) {
       const results = [];
       const d = new Date();
@@ -4662,6 +4688,7 @@
     });
 
     // ── 雲端即時同步（Supabase）──
+    // ===== 遠端同步套用／匯出 CSV・Excel =====
     function applyRemoteState(remote) {
       if (remote.version !== 7) return; // 版本不符，略過
       Object.assign(state, remote);
