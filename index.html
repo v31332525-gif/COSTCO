@@ -1937,7 +1937,7 @@
         <div style="margin-top:14px;padding:12px 14px;background:white;border:1px solid var(--line);border-radius:10px">
           <button type="button" id="historyImportToggleBtn" style="width:100%;background:none;border:none;padding:0;font-weight:800;color:var(--ink);font-size:13px;text-align:left;cursor:pointer;display:flex;justify-content:space-between">📥 匯入歷史紀錄（貼總檔格式）<span id="historyImportArrow">▶</span></button>
           <div id="historyImportBody" style="display:none;margin-top:8px">
-            <textarea id="historyPaste" rows="6" placeholder="從總檔複製「連同標題列」貼上，會讀取：日期、姓名、編號-商品簡稱、數量、售價。日期建議含年份（例如 2025/5/15），才分得卺是哪一年買的" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box"></textarea>
+            <textarea id="historyPaste" rows="6" placeholder="從總檔複製「連同標題列」貼上，會讀取：日期、姓名、種類、編號-商品名稱、數量、售價、是否特價。日期建議含年份（例如 2025/5/15），才分得卺是哪一年買的" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;box-sizing:border-box"></textarea>
             <button class="primary" type="button" id="historyImportBtn" style="width:100%;min-height:40px;margin-top:6px;font-size:14px">匯入到歷史</button>
             <div id="historyImportMsg" style="font-size:12px;color:var(--muted);margin-top:6px">重複的資料列會自動略過，可以放心重貼；之後每次「歸檔本週」也會自動把當週買到的商品記進來。</div>
           </div>
@@ -2228,7 +2228,7 @@
         const _hSet = new Set(_hRecs.map(_hKey));
         state.orders.forEach(o => {
           const _pu = (state.purchases || {})[o.item] || {};
-          const rec = { d: _hDate, c: o.customer, n: o.item, q: Number(o.qty || 1), p: Number(_pu.price || 0) };
+          const rec = { d: _hDate, c: o.customer, n: o.item, q: Number(o.qty || 1), p: Number(_pu.price || 0), s: /特價/.test(String(o.note || "")) ? 1 : 0 };
           if (!_hSet.has(_hKey(rec))) { _hSet.add(_hKey(rec)); _hRecs.push(rec); }
         });
       } catch (e) { console.warn("歷史記錄失敗", e); }
@@ -3303,7 +3303,7 @@
           html += '<div style="padding:0 12px 10px;font-size:12px;color:var(--muted)">'
             + rows.slice().reverse().map(r =>
               '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px dashed var(--line)">'
-              + '<span>' + escapeHtml(r.d || "—") + '　' + escapeHtml(r.c || "") + (Number(r.q) > 1 ? ' ×' + r.q : '') + '</span>'
+              + '<span>' + escapeHtml(r.d || "—") + '　' + escapeHtml(r.c || "") + (Number(r.q) > 1 ? ' ×' + r.q : '') + (r.s ? ' <span style="color:var(--warn);font-weight:700">特價</span>' : '') + '</span>'
               + '<b style="color:' + (Number(r.p) > 0 ? 'var(--ink)' : 'var(--muted)') + '">' + (Number(r.p) > 0 ? '$' + r.p : '—') + '</b></div>').join("")
             + '</div>';
         }
@@ -3341,9 +3341,10 @@
       const idx = {
         date: headerIndex(headers, ["日期"]),
         customer: headerIndex(headers, ["姓名", "客人", "名稱"]),
-        item: headerIndex(headers, ["編號-商品簡稱", "商品", "品名"]),
+        item: headerIndex(headers, ["編號-商品名稱", "編號-商品簡稱", "商品", "品名"]),
         qty: headerIndex(headers, ["數量"]),
-        price: headerIndex(headers, ["售價", "單價"])
+        price: headerIndex(headers, ["售價", "單價"]),
+        promo: headerIndex(headers, ["是否特價", "特價"])
       };
       if (idx.item < 0) return 0;
       const recs = historyRecords();
@@ -3358,7 +3359,8 @@
           c: idx.customer >= 0 ? normalizeCustomer(row[idx.customer]) : "",
           n,
           q: idx.qty >= 0 ? (Number(row[idx.qty] || 1) || 1) : 1,
-          p: idx.price >= 0 ? (Number(String(row[idx.price] || "").replace(/[$,\s]/g, "")) || 0) : 0
+          p: idx.price >= 0 ? (Number(String(row[idx.price] || "").replace(/[$,\s]/g, "")) || 0) : 0,
+          s: idx.promo >= 0 && String(row[idx.promo] || "").trim() ? 1 : 0
         };
         if (existing.has(key(rec))) return;
         existing.add(key(rec));
@@ -3378,7 +3380,7 @@
         saveState();
         renderHistory();
       } else {
-        msg.textContent = "沒有讀到新資料：請確認有連同「標題列」一起複製貼上，且至少有「編號-商品簡稱」欄";
+        msg.textContent = "沒有讀到新資料：請確認有連同「標題列」一起複製貼上，且至少有「編號-商品名稱」欄";
       }
     });
 
