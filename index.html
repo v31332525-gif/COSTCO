@@ -633,6 +633,145 @@
     }
 
     /* 改週 Modal */
+    /* ===== 待辦追蹤專區（等特價／限購排隊） ===== */
+    .pending-zone {
+      margin-bottom: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .pending-zone.hidden { display: none; }
+
+    .pending-zone > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 12px;
+      font-weight: 800;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pending-zone > summary::-webkit-details-marker { display: none; }
+
+    .pending-zone > summary::after {
+      content: "▾";
+      margin-left: auto;
+      color: var(--muted);
+    }
+
+    .pending-zone[open] > summary::after { content: "▴"; }
+
+    .pending-count {
+      background: var(--warn);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 2px 8px;
+      font-weight: 800;
+    }
+
+    .pending-body {
+      padding: 0 12px 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .pending-group-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--muted);
+      margin: 2px 0 6px;
+    }
+
+    .pending-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      background: #fff;
+    }
+
+    .pending-item + .pending-item { margin-top: 8px; }
+
+    .pending-item-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pending-item-title {
+      font-weight: 800;
+      font-size: 14px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pending-action {
+      min-height: 40px;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 0 12px;
+      flex-shrink: 0;
+    }
+
+    .pending-rows { display: grid; gap: 4px; font-size: 13px; }
+
+    .pending-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .pending-rank {
+      background: var(--chip);
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .pending-note { color: var(--warn); font-size: 12px; }
+
+    .pending-check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+
+    .pending-check-row input[type="checkbox"] {
+      width: 22px;
+      height: 22px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .pending-alloc-preview {
+      font-size: 13px;
+      display: grid;
+      gap: 4px;
+      margin: 8px 0;
+    }
+
+    .pending-alloc-preview .ok-line { color: var(--ok); font-weight: 700; }
+
+    .pending-alloc-preview .wait-line { color: var(--muted); }
+
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -1645,6 +1784,13 @@
     <main>
       <!-- ===== 採買頁（shopView） ===== -->
       <section class="view active" id="shopView">
+        <details class="pending-zone hidden" id="pendingZone">
+          <summary>📦 待辦追蹤：等特價 &amp; 限購排隊 <span class="pending-count" id="pendingCount">0</span></summary>
+          <div class="pending-body">
+            <div id="pendingQueueGroup"></div>
+            <div id="pendingSaleGroup"></div>
+          </div>
+        </details>
         <div class="week-control">
           <div class="week-control-row">
             <label>
@@ -2023,6 +2169,36 @@
     </div>
   </div>
 
+  <!-- 限購排隊：今日有貨分配 Modal -->
+  <div class="modal-overlay hidden" id="queueModal">
+    <div class="modal-box">
+      <p class="modal-title" id="queueModalTitle">今日有貨</p>
+      <p class="modal-sub">輸入現場搶到數量，依排隊順序（先到先分）自動分配</p>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)">
+        搶到數量
+        <input type="number" id="queueGotQty" min="0" step="0.5" inputmode="decimal" style="min-height:44px;font-size:18px;border:1px solid var(--line);border-radius:8px;padding:0 10px;box-sizing:border-box">
+      </label>
+      <div class="pending-alloc-preview" id="queueAllocPreview"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="queueCancel">取消</button>
+        <button class="modal-confirm" id="queueConfirm">確認分配</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 等特價：今日特價勾選 Modal -->
+  <div class="modal-overlay hidden" id="saleModal">
+    <div class="modal-box">
+      <p class="modal-title" id="saleModalTitle">今日特價了</p>
+      <p class="modal-sub">勾選這次要買的客人，沒勾的繼續等特價</p>
+      <div style="display:grid;gap:8px;max-height:50vh;overflow:auto" id="saleChecklist"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" id="saleCancel">取消</button>
+        <button class="modal-confirm" id="saleConfirm">確認購買</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 店家差額移轉 Modal（需求四）-->
   <div class="modal-overlay hidden" id="transferModal">
     <div class="modal-box">
@@ -2352,7 +2528,7 @@
       if (value instanceof Date && !Number.isNaN(value.getTime())) return formatDate(value);
       const raw = String(value).trim();
       if (!raw) return "";
-      if (/日期未到|未到|等特價|待特價|無日期|不限日期|排限購/.test(raw)) return raw;
+      if (/日期未到|未到|等特價|待特價|無日期|不限日期|排限購|排隊/.test(raw)) return raw;
       if (/^\d+(\.\d+)?$/.test(raw)) {
         const serial = Number(raw);
         if (serial > 20000 && serial < 80000) {
@@ -2376,8 +2552,20 @@
       if (!text) return "無日期";
       if (/等特價|待特價/.test(text)) return "等特價";
       if (/日期未到|未到/.test(text)) return "日期未到";
-      if (/排限購/.test(text)) return "先排限購";
+      if (/排限購|排隊/.test(text)) return "先排限購";
       return text;
+    }
+
+    // ===== 待辦追蹤（等特價／限購排隊）共用 =====
+    const PENDING_BATCHES = ["等特價", "先排限購"];
+
+    function isPendingOrder(order) {
+      return PENDING_BATCHES.includes(order.batch);
+    }
+
+    function todayDateStr() {
+      const d = new Date();
+      return `${d.getMonth() + 1}/${d.getDate()}`;
     }
 
     function saveState() {
@@ -2394,6 +2582,7 @@
       const map = new Map();
       vs.orders.forEach((order, index) => {
         order = normalizeOrder(order, index);
+        if (!isViewingArchive() && isPendingOrder(order)) return; // 待辦訂單只在頂部專區顯示
         if (!matchesBatch(order)) return;
         const key = productKey(order.item);
         if (!map.has(key)) {
@@ -2530,6 +2719,7 @@
 
     // ===== 採買頁畫面繪製（renderItems） =====
     function renderItems() {
+      renderPendingZone();
       const list = document.getElementById("itemList");
       const compact = document.getElementById("compactList");
       const items = visibleItems();
@@ -2654,6 +2844,189 @@
         return (statusOrder[pa.status] ?? 0) - (statusOrder[pb.status] ?? 0);
       });
     }
+
+    // ===== 待辦追蹤專區（renderPendingZone／今日有貨／今日特價） =====
+    let queueModalKey = null;
+    let saleModalKey = null;
+
+    function pendingGroups(batch) {
+      const vs = currentViewState();
+      const map = new Map();
+      vs.orders.forEach((order, index) => {
+        const o = normalizeOrder(order, index);
+        if (o.batch !== batch) return;
+        const key = productKey(o.item);
+        if (!map.has(key)) map.set(key, { key, item: o.item, orders: [] });
+        map.get(key).orders.push(o);
+      });
+      return Array.from(map.values()).map(group => ({
+        ...group,
+        orders: group.orders.sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0))
+      }));
+    }
+
+    function renderPendingZone() {
+      const zone = document.getElementById("pendingZone");
+      if (!zone) return;
+      if (isViewingArchive()) { zone.classList.add("hidden"); return; }
+      const queueGroups = pendingGroups("先排限購");
+      const saleGroups = pendingGroups("等特價");
+      const total = [...queueGroups, ...saleGroups].reduce((sum, g) => sum + g.orders.length, 0);
+      zone.classList.toggle("hidden", !total);
+      document.getElementById("pendingCount").textContent = `${total} 筆`;
+
+      document.getElementById("pendingQueueGroup").innerHTML = queueGroups.length ? `
+        <div class="pending-group-title">🚧 限購排隊區（先到先分）</div>
+        ${queueGroups.map(group => `
+          <div class="pending-item">
+            <div class="pending-item-head">
+              <div class="pending-item-title">${escapeHtml(group.item)}</div>
+              <button class="pending-action" data-queue-key="${escapeHtml(group.key)}" type="button">🛒 今日有貨</button>
+            </div>
+            <div class="pending-rows">
+              ${group.orders.map((o, i) => `
+                <div class="pending-row">
+                  <span class="pending-rank">#${i + 1}</span>
+                  <span style="flex:1">${escapeHtml(o.customer)} x${o.qty}${o.note ? ` <span class="pending-note">📝 ${escapeHtml(o.note)}</span>` : ""}</span>
+                  <button class="cancel-order" data-cancel-seq="${o.seq}" type="button">取消</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("")}` : "";
+
+      document.getElementById("pendingSaleGroup").innerHTML = saleGroups.length ? `
+        <div class="pending-group-title">⏳ 等特價區</div>
+        ${saleGroups.map(group => `
+          <div class="pending-item">
+            <div class="pending-item-head">
+              <div class="pending-item-title">${escapeHtml(group.item)}</div>
+              <button class="pending-action" data-sale-key="${escapeHtml(group.key)}" type="button">🛒 今日特價了</button>
+            </div>
+            <div class="pending-rows">
+              ${group.orders.map(o => `
+                <div class="pending-row">
+                  <span style="flex:1">${escapeHtml(o.customer)} x${o.qty}${o.note ? ` <span class="pending-note">📝 ${escapeHtml(o.note)}</span>` : ""}</span>
+                  <button class="cancel-order" data-cancel-seq="${o.seq}" type="button">取消</button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("")}` : "";
+    }
+
+    document.getElementById("pendingZone").addEventListener("click", event => {
+      const queueBtn = event.target.closest("[data-queue-key]");
+      if (queueBtn) { event.preventDefault(); openQueueModal(queueBtn.dataset.queueKey); return; }
+      const saleBtn = event.target.closest("[data-sale-key]");
+      if (saleBtn) { event.preventDefault(); openSaleModal(saleBtn.dataset.saleKey); }
+    });
+
+    // ── 限購排隊：今日有貨 → 依排隊順序分配 ──
+    function queueAllocation(group, gotQty) {
+      let remaining = Number(gotQty || 0);
+      return group.orders.map((o, i) => {
+        const qty = Number(o.qty || 0);
+        const assigned = Math.max(0, Math.min(qty, remaining));
+        remaining -= assigned;
+        return { ...o, rank: i + 1, assigned, left: qty - assigned };
+      });
+    }
+
+    function openQueueModal(key) {
+      const group = pendingGroups("先排限購").find(g => g.key === key);
+      if (!group) return;
+      queueModalKey = key;
+      document.getElementById("queueModalTitle").textContent = `${group.item} — 今日有貨`;
+      document.getElementById("queueGotQty").value = "";
+      renderQueuePreview();
+      document.getElementById("queueModal").classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function renderQueuePreview() {
+      const box = document.getElementById("queueAllocPreview");
+      const group = queueModalKey ? pendingGroups("先排限購").find(g => g.key === queueModalKey) : null;
+      if (!group) { box.innerHTML = ""; return; }
+      const got = Number(document.getElementById("queueGotQty").value || 0);
+      box.innerHTML = queueAllocation(group, got).map(row => {
+        if (row.assigned >= Number(row.qty) && row.assigned > 0) return `<div class="ok-line">#${row.rank} ${escapeHtml(row.customer)} x${row.qty} → ✅ 全拿到（轉今日）</div>`;
+        if (row.assigned > 0) return `<div class="ok-line">#${row.rank} ${escapeHtml(row.customer)} x${row.qty} → 拿 ${row.assigned}，剩 ${row.left} 繼續排</div>`;
+        return `<div class="wait-line">#${row.rank} ${escapeHtml(row.customer)} x${row.qty} → 繼續排隊</div>`;
+      }).join("");
+    }
+
+    document.getElementById("queueGotQty").addEventListener("input", renderQueuePreview);
+
+    function closeQueueModal() {
+      document.getElementById("queueModal").classList.add("hidden");
+      document.body.style.overflow = "";
+      queueModalKey = null;
+    }
+
+    document.getElementById("queueCancel").addEventListener("click", closeQueueModal);
+    document.getElementById("queueModal").addEventListener("click", event => {
+      if (event.target === document.getElementById("queueModal")) closeQueueModal();
+    });
+
+    document.getElementById("queueConfirm").addEventListener("click", () => {
+      const group = queueModalKey ? pendingGroups("先排限購").find(g => g.key === queueModalKey) : null;
+      const got = Number(document.getElementById("queueGotQty").value || 0);
+      if (!group || !(got > 0)) return;
+      const today = todayDateStr();
+      let nextSeq = Math.max(0, ...state.orders.map((o, i) => Number(normalizeOrder(o, i).seq))) + 1;
+      queueAllocation(group, got).forEach(row => {
+        if (!row.assigned) return;
+        const idx = state.orders.findIndex((o, i) => Number(normalizeOrder(o, i).seq) === Number(row.seq));
+        if (idx < 0) return;
+        const original = state.orders[idx];
+        if (row.left > 0) {
+          // 拆單：分到的轉今日採買，剩下的繼續排隊
+          state.orders[idx] = { ...original, qty: row.left };
+          state.orders.push({ ...original, seq: nextSeq++, qty: row.assigned, date: today, batch: today, note: (original.note ? original.note + "、" : "") + "排隊分配" });
+        } else {
+          state.orders[idx] = { ...original, date: today, batch: today };
+        }
+      });
+      closeQueueModal();
+      renderAll();
+    });
+
+    // ── 等特價：今日特價了 → 勾選要買的客人 ──
+    function openSaleModal(key) {
+      const group = pendingGroups("等特價").find(g => g.key === key);
+      if (!group) return;
+      saleModalKey = key;
+      document.getElementById("saleModalTitle").textContent = `${group.item} — 今日特價了`;
+      document.getElementById("saleChecklist").innerHTML = group.orders.map(o => `
+        <label class="pending-check-row">
+          <input type="checkbox" data-sale-seq="${o.seq}">
+          <span style="flex:1;min-width:0">${escapeHtml(o.customer)} x${o.qty}${o.note ? `<br><span class="pending-note">📝 ${escapeHtml(o.note)}</span>` : ""}</span>
+        </label>
+      `).join("");
+      document.getElementById("saleModal").classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeSaleModal() {
+      document.getElementById("saleModal").classList.add("hidden");
+      document.body.style.overflow = "";
+      saleModalKey = null;
+    }
+
+    document.getElementById("saleCancel").addEventListener("click", closeSaleModal);
+    document.getElementById("saleModal").addEventListener("click", event => {
+      if (event.target === document.getElementById("saleModal")) closeSaleModal();
+    });
+
+    document.getElementById("saleConfirm").addEventListener("click", () => {
+      const checked = Array.from(document.querySelectorAll("#saleChecklist [data-sale-seq]:checked")).map(el => Number(el.dataset.saleSeq));
+      if (!saleModalKey || !checked.length) return;
+      const today = todayDateStr();
+      state.orders = state.orders.map((o, i) => checked.includes(Number(normalizeOrder(o, i).seq)) ? { ...o, date: today, batch: today } : o);
+      closeSaleModal();
+      renderAll();
+    });
 
     // ===== 結單頁畫面繪製（renderCheckout） =====
     function renderCheckout() {
@@ -2913,7 +3286,7 @@
 
     function renderBatchBar() {
       const bar = document.getElementById("batchBar");
-      const batches = allBatches();
+      const batches = allBatches().filter(b => isViewingArchive() || !PENDING_BATCHES.includes(b));
       bar.innerHTML = [
         `<button class="batch ${activeBatch === "all" ? "active" : ""}" data-batch="all">全部批次</button>`,
         ...batches.map(batch => `<button class="batch ${activeBatch === batch ? "active" : ""}" data-batch="${escapeHtml(batch)}">${escapeHtml(batch)}</button>`)
@@ -4648,6 +5021,7 @@
       });
       const specialOpts = [
         { value: "等特價", label: "⏳ 等特價才買" },
+        { value: "先排限購", label: "🚧 限購排隊" },
         { value: "日期未到", label: "📅 日期未到先排" }
       ];
 
