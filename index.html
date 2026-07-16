@@ -1448,14 +1448,16 @@
       color: #714800;
     }
     .new-week-btn {
-      width: 100%;
-      min-height: 48px;
-      border-radius: 10px;
-      background: var(--accent);
-      color: white;
-      font-size: 15px;
+      width: auto;
+      min-height: 34px;
+      padding: 0 14px;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--accent-strong);
+      border: 1px solid var(--accent-strong);
+      font-size: 13px;
       font-weight: 800;
-      margin-top: 8px;
+      margin-top: 0;
     }
     .numpad-qty {
       margin-top: 6px;
@@ -1812,7 +1814,7 @@
 
       <section class="view" id="splitView">
         <!-- 開新週 -->
-        <div style="margin-bottom:14px">
+        <div style="margin-bottom:14px;display:flex;justify-content:flex-end">
           <button class="new-week-btn" id="newWeekBtn">🆕 歸檔本週，開始新的一週</button>
         </div>
         <!-- 需求五：帳款鎖定開關 -->
@@ -1830,20 +1832,32 @@
 
         <!-- 收款總覽 -->
         <div class="collect-panel">
-          <button class="collect-toggle-btn" id="collectToggleBtn">
+          <div class="collect-toggle-btn" id="collectToggleBtn" style="cursor:default">
             <span>💰 收款總覽</span>
-            <span class="collect-toggle-arrow">▼</span>
-          </button>
-          <div class="collect-summary-panel" id="collectSummaryPanel">
-            <!-- 需求七：實體現金核對看板 -->
-            <div class="cash-reconcile-board" id="cashReconcileBoard" style="margin:10px 14px 0;padding:12px 14px;background:#eef8f2;border:1px solid #bfe3cf;border-radius:10px;font-size:13px">
-              <div style="font-weight:800;margin-bottom:6px;color:var(--ink)">💵 實體現金核對看板</div>
-              <div style="display:flex;justify-content:space-between"><span>本週商品已收總金額</span><strong id="cashCollectedTotal" style="color:var(--ok)">$0</strong></div>
-              <div style="display:flex;justify-content:space-between"><span>目前未收／欠款總金額</span><strong id="cashOutstandingTotal" style="color:var(--danger)">$0</strong></div>
-              <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #bfe3cf;margin-top:4px"><span style="font-weight:800">本週商品應收總計（大計）</span><strong id="cashGrandTotal" style="font-weight:800">$0</strong></div>
+            <span style="font-size:12px;font-weight:400">點客人名字看明細</span>
+          </div>
+          <div class="collect-summary-panel open" id="collectSummaryPanel">
+            <div style="padding:10px 14px 0">
+              <input type="search" id="collectSearch" placeholder="🔍 搜尋客人" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:4px;box-sizing:border-box">
             </div>
-            <div class="collect-tools" style="padding:10px 14px 0">
-              <input type="search" id="collectSearch" placeholder="🔍 搜尋客人" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:8px;box-sizing:border-box">
+            <div class="collect-summary-header">
+              <span>客人</span>
+              <span>商品金額</span>
+              <span>代購費</span>
+              <span>應收</span>
+            </div>
+            <div id="collectRows"></div>
+            <div class="collect-footer">
+              <span>共 <strong id="collectCount">0</strong> 位</span>
+              <span>總計 <strong id="collectGrandTotal">$0</strong></span>
+            </div>
+            <div class="collect-tools" style="padding:10px 14px 12px;border-top:1px solid var(--line)">
+              <button type="button" id="cashBoardToggleBtn" style="width:100%;min-height:38px;border-radius:8px;background:#eef8f2;border:1px solid #bfe3cf;color:var(--ok);font-weight:800;font-size:13px;margin-bottom:8px">💵 現金核對看板 <span id="cashBoardArrow">▶</span></button>
+              <div class="cash-reconcile-board" id="cashReconcileBoard" style="display:none;margin:0 0 8px;padding:12px 14px;background:#eef8f2;border:1px solid #bfe3cf;border-radius:10px;font-size:13px">
+                <div style="display:flex;justify-content:space-between"><span>本週商品已收總金額</span><strong id="cashCollectedTotal" style="color:var(--ok)">$0</strong></div>
+                <div style="display:flex;justify-content:space-between"><span>目前未收／欠款總金額</span><strong id="cashOutstandingTotal" style="color:var(--danger)">$0</strong></div>
+                <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #bfe3cf;margin-top:4px"><span style="font-weight:800">本週商品應收總計（大計）</span><strong id="cashGrandTotal" style="font-weight:800">$0</strong></div>
+              </div>
               <button type="button" id="mergeCustomerToggleBtn" style="width:100%;min-height:38px;border-radius:8px;background:#fff8ec;border:1px solid #ffe1ae;color:#b26a00;font-weight:800;font-size:13px;margin-bottom:8px">🔀 合併重複客人</button>
               <div id="mergeCustomerBody" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:10px;background:#fffaf0;border:1px solid #ffe1ae;border-radius:8px">
                 <select id="mergeFromSelect" style="flex:1;min-width:110px;min-height:36px;border-radius:6px;border:1px solid var(--line)"></select>
@@ -1865,29 +1879,20 @@
                 <button type="button" id="manualChargeBtn" class="primary" style="min-height:38px;font-size:13px">＋ 加入這筆收款</button>
               </div>
             </div>
-            <div class="collect-summary-header">
-              <span>客人</span>
-              <span>商品金額</span>
-              <span>代購費</span>
-              <span>應收</span>
-            </div>
-            <div id="collectRows"></div>
-            <div class="collect-footer">
-              <span>共 <strong id="collectCount">0</strong> 位</span>
-              <span>總計 <strong id="collectGrandTotal">$0</strong></span>
-            </div>
           </div>
         </div>
 
         <!-- 分層對帳（需求四） -->
         <div class="reconcile-panel" id="reconcilePanel" style="margin-bottom:14px;padding:12px 14px;background:#f7f5ef;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.9">
-          <div style="font-weight:800;margin-bottom:6px;color:var(--ink)">🧾 分層對帳（自動核對，取代人工 Excel）</div>
+          <button type="button" id="reconcileToggleBtn" style="width:100%;background:none;border:none;padding:0;font-weight:800;color:var(--ink);font-size:13px;text-align:left;cursor:pointer;display:flex;justify-content:space-between">🧾 分層對帳（自動核對，取代人工 Excel）<span id="reconcileArrow">▶</span></button>
+          <div id="reconcileBody" style="display:none">
           <div style="display:flex;justify-content:space-between"><span>已買總額（登記金額）</span><strong id="reconcileRegistered">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 客戶商品分帳總額</span><strong id="reconcileCustomerGoods">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-left:12px;color:var(--muted)"><span>－ 店（進位差額）商品金額</span><strong id="reconcileStoreGoods">$0</strong></div>
           <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px dashed var(--line);margin-top:4px"><span>核對結果</span><strong id="reconcileCheck">✅ 已對平</strong></div>
           <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)"><span>代購費總額（不含店）</span><strong id="reconcileFeeTotal">$0</strong></div>
           <div style="display:flex;justify-content:space-between"><span>客戶應付總額（商品＋代購費）</span><strong id="reconcileCustomerPayable">$0</strong></div>
+          </div>
         </div>
 
         <!-- 社群貼文通知 -->
@@ -3067,6 +3072,7 @@
         const __statusRowHtml = isStore
           ? `<span style="font-size:12px;color:var(--muted)">採購無條件進位多出的部分，如有客人加購請按下方「移轉給客人」</span>`
           : `
+            <span style="font-size:11px;color:var(--muted);flex-basis:100%">${escapeHtml(data.items.map(it => String(it.name).replace(/^\d+\s*/, "") + "×" + it.qty).join("、"))}</span>
             ${cs.settledDate ? `<span class="settled-badge">✅ ${cs.settledDate} 結清</span>` : ""}
             ${cs.paid && cs.paidAt ? `<span class="paid-badge">💰 收款 ${cs.paidAt}</span>` : ""}
             ${cs.picked && cs.pickedAt ? `<span class="paid-badge">📦 取貨 ${cs.pickedAt}</span>` : ""}
@@ -3094,9 +3100,9 @@
         return { settled: !isStore && !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml, isStore, paid: !!cs.paid };
       });
       // 需求八：收款清單動態排序 -- 已收欠款（已付款）的客人自動沉到清單最下方，未付款的保持在最上方催款；取消勾選會自動回到上方
+      // 只有「已付款＋已取貨」都勾了才會移到下方已結清區；單勾任一個都留在原位
       const __out = __built.filter(b => !b.settled && b.matched).sort((a, b) => {
         if (a.isStore !== b.isStore) return a.isStore ? 1 : -1;
-        if (a.paid !== b.paid) return a.paid ? 1 : -1;
         return 0;
       }).map(b => b.html).join("");
       const __done = __built.filter(b => b.settled && b.matched);
@@ -3198,12 +3204,21 @@
       if (box) { const nowHidden = box.classList.toggle("hidden"); if (arrow) arrow.textContent = nowHidden ? "▶" : "▼"; }
     });
 
-    // Collect toggle
-    document.getElementById("collectToggleBtn").addEventListener("click", () => {
-      const btn = document.getElementById("collectToggleBtn");
-      const panel = document.getElementById("collectSummaryPanel");
-      btn.classList.toggle("open");
-      panel.classList.toggle("open");
+    // 現金核對看板收合
+    document.getElementById("cashBoardToggleBtn").addEventListener("click", () => {
+      const body = document.getElementById("cashReconcileBoard");
+      const arrow = document.getElementById("cashBoardArrow");
+      const show = body.style.display === "none";
+      body.style.display = show ? "block" : "none";
+      if (arrow) arrow.textContent = show ? "▼" : "▶";
+    });
+    // 分層對帳收合
+    document.getElementById("reconcileToggleBtn").addEventListener("click", () => {
+      const body = document.getElementById("reconcileBody");
+      const arrow = document.getElementById("reconcileArrow");
+      const show = body.style.display === "none";
+      body.style.display = show ? "block" : "none";
+      if (arrow) arrow.textContent = show ? "▼" : "▶";
     });
 
     // 需求五：帳款鎖定開關
