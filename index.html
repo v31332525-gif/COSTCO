@@ -1839,7 +1839,7 @@
           </div>
           <div class="collect-summary-panel open" id="collectSummaryPanel">
             <div style="padding:10px 14px 0">
-              <input type="search" id="collectSearch" placeholder="🔍 搜尋客人" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:4px;box-sizing:border-box">
+              <input type="search" id="collectSearch" placeholder="🔍 搜尋客人或商品" style="width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:14px;background:white;margin-bottom:4px;box-sizing:border-box">
             </div>
             <div class="collect-summary-header">
               <span>客人</span>
@@ -2989,9 +2989,11 @@
       return html;
     }
 
-    function matchesCollectSearch(name) {
+    function matchesCollectSearch(name, items) {
       if (!collectSearchText) return true;
-      return String(name || "").toLowerCase().includes(collectSearchText.toLowerCase());
+      const q = collectSearchText.toLowerCase();
+      if (String(name || "").toLowerCase().includes(q)) return true;
+      return (items || []).some(it => String(it.name || "").toLowerCase().includes(q));
     }
 
     function renderMergeSelects(names) {
@@ -3023,7 +3025,7 @@
       ].filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hant"));
       renderMergeSelects(_allNames);
 
-      const _debtsShown = _debtsAll.filter(d => matchesCollectSearch(d.customer));
+      const _debtsShown = _debtsAll.filter(d => matchesCollectSearch(d.customer, d.items));
       const _debtHtml = renderDebtRowsHtml(_debtsShown);
       const _debtUnpaidN = _debtsAll.filter(d => !d.paid).length;
       if (entries.length === 0) {
@@ -3098,7 +3100,7 @@
             </div>` : ""}
           </div>
         </div>`;
-        return { settled: !isStore && !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer), html: __rowHtml, isStore, paid: !!cs.paid };
+        return { settled: !isStore && !!(cs.paid && cs.picked), matched: matchesCollectSearch(customer, data.items), html: __rowHtml, isStore, paid: !!cs.paid };
       });
       // 需求八：收款清單動態排序 -- 已收欠款（已付款）的客人自動沉到清單最下方，未付款的保持在最上方催款；取消勾選會自動回到上方
       // 只有「已付款＋已取貨」都勾了才會移到下方已結清區；單勾任一個都留在原位
