@@ -5317,15 +5317,26 @@
       return String(text || "").split(/\r?\n/).map(line => {
         const raw = line.trim();
         if (!raw) return null;
-        if (raw.includes("\t")) {
-          let c = raw.split("\t").map(s => s.trim());
+        if (line.includes("\t")) {
+          // 用未經 trim 的原始整行下去切，不然結尾如果剛好沒有特價（最後一欄是空的），
+          // 前面的 trim() 會把結尾那個 tab 一起吃掉，欄位數少算一欄、對位跟著全部偏掉
+          let c = line.split("\t").map(s => s.trim());
           if (!isDateLike(c[0] || "")) c = [""].concat(c);
+          const n = c.length;
+          // 5 欄是「日期/姓名/編號+商品/數量/特價」；但總檔常見格式其實是 8 欄
+          // （日期/姓名/空/品類/拿貨/編號-商品簡稱/數量/特價）。欄位數比較多時，
+          // 商品/數量/特價一定是最後三欄，改成「從後面數」取，不管前面夾了
+          // 幾欄品類/拿貨這類分類資訊，才不會把商品名讀成中間的空白欄位
+          const itemIdx = n >= 5 ? n - 3 : 2;
+          const qtyIdx = n >= 5 ? n - 2 : 3;
+          const promoIdx = n >= 5 ? n - 1 : 4;
+          const qtyRaw = c[qtyIdx] || "";
           return {
             date: normDate(c[0] || "") || todayDateStr(),
             customer: c[1] || "",
-            item: c[2] || "",
-            qty: isNum(c[3] || "") ? Number(c[3]) : 1,
-            promo: c[4] || ""
+            item: c[itemIdx] || "",
+            qty: isNum(qtyRaw) ? Number(qtyRaw) : 1,
+            promo: c[promoIdx] || ""
           };
         }
         let t = raw.split(/\s+/);
