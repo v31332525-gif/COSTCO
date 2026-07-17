@@ -23,12 +23,14 @@
     const SUPABASE_URL = "https://hlubbsfxjiaqxxghhdld.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_3XOjaff74E4MOuo4zowueQ_kug367W9";
     const ROW_ID = "costco-helper-v1";
+    const INBOX_ROW_ID = "inbox-v1";
     // ──────────────────
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     window._sb = supabase; // 除錯用
 
     let _suppressNext = false; // 避免自己寫入後又觸發自己重繪
+    let _suppressInboxNext = false;
 
     window._fb = {
       save(stateObj) {
@@ -58,6 +60,32 @@
             { event: "*", schema: "public", table: "app_state", filter: "id=eq." + ROW_ID },
             payload => {
               if (_suppressNext) { _suppressNext = false; return; }
+              if (payload.new && payload.new.data) callback(payload.new.data);
+            })
+          .subscribe();
+      },
+      saveInbox(rows) {
+        _suppressInboxNext = true;
+        return supabase.from("app_state")
+          .upsert({ id: INBOX_ROW_ID, data: { version: 1, rows: rows, updatedAt: new Date().toISOString() }, updated_at: new Date().toISOString() })
+          .then(({ error }) => {
+            if (error) {
+              console.warn("Supabase inbox save error:", error);
+              _suppressInboxNext = false;
+            }
+            return !error;
+          });
+      },
+      listenInbox(callback) {
+        supabase.from("app_state").select("data").eq("id", INBOX_ROW_ID).maybeSingle()
+          .then(({ data, error }) => {
+            if (!error && data && data.data) callback(data.data);
+          });
+        supabase.channel("app_state_inbox")
+          .on("postgres_changes",
+            { event: "*", schema: "public", table: "app_state", filter: "id=eq." + INBOX_ROW_ID },
+            payload => {
+              if (_suppressInboxNext) { _suppressInboxNext = false; return; }
               if (payload.new && payload.new.data) callback(payload.new.data);
             })
           .subscribe();
@@ -241,7 +269,7 @@
       bottom: 0;
       z-index: 10;
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 6px;
       max-width: 980px;
       margin: 0 auto;
@@ -434,6 +462,80 @@
       border-radius: 8px;
       padding: 10px 12px;
       box-shadow: var(--shadow);
+    }
+
+    /* 尚未處理：淺紅底提醒（商品卡＋清單列） */
+    .card.not-processed,
+    .compact-row.not-processed {
+      background: #fdf0ee;
+      border-color: #f0c0b6;
+    }
+
+    /* 🔥 特價標記（可點擊切換） */
+    .sale-chip {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      opacity: .5;
+    }
+    .sale-chip.on {
+      background: #fff3e6;
+      border-color: #f2b366;
+      color: #b45309;
+      opacity: 1;
+    }
+    .compact-pill.sale-pill {
+      background: #fff3e6;
+      color: #b45309;
+    }
+
+    /* 今日加單徽章 */
+    .inbox-badge {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid #f2b366;
+      border-radius: 10px;
+      background: #fff3e6;
+      color: #b45309;
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    /* 加單頁表格 */
+    .inbox-row {
+      display: grid;
+      grid-template-columns: 62px 70px 1fr 44px 62px 34px;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .inbox-row input {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 6px;
+      font-size: 14px;
+      width: 100%;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    .inbox-head {
+      margin-bottom: 2px;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .inbox-del {
+      border: none;
+      background: #fff0f0;
+      color: #c0392b;
+      border-radius: 8px;
+      font-weight: 800;
+      min-height: 42px;
     }
 
     .item-head {
@@ -1784,6 +1886,7 @@
     <main>
       <!-- ===== 採買頁（shopView） ===== -->
       <section class="view active" id="shopView">
+        <button id="inboxBadge" class="inbox-badge hidden" type="button">🆕 今日加單 <b id="inboxBadgeCount">0</b> 筆 ─ 點我併入本週清單</button>
         <details class="pending-zone hidden" id="pendingZone">
           <summary>📦 待辦追蹤：等特價 &amp; 限購排隊 <span class="pending-count" id="pendingCount">0</span></summary>
           <div class="pending-body">
@@ -1846,6 +1949,27 @@
             <button class="card-modal-close" id="cardModalClose" type="button">✔ 確認</button>
           </div>
         </div>
+      </section>
+
+      <!-- ===== 加單頁（addView）：獨立信箱，與主資料完全隔離 ===== -->
+      <section class="view" id="addView">
+        <div class="import-panel">
+          <div style="font-weight:800;font-size:15px">📝 加單信箱</div>
+          <div class="import-hint">這裡的單存在獨立信箱，完全不會動到採買畫面。現場的人按「併入」後才會進主清單。</div>
+          <label>
+            整串貼上（免標題列，順序：日期 姓名 編號＋商品 數量 特價）
+            <textarea id="inboxPaste" rows="4" placeholder="例：7/18 小美 123456 廚房紙巾 2 特價259&#10;一行一筆，Tab 或空白分隔；日期可寫 7/18、今天、等特價、排隊"></textarea>
+          </label>
+          <div class="import-actions">
+            <button class="secondary" type="button" id="inboxParseBtn">↓ 拆進表格</button>
+          </div>
+        </div>
+        <div id="inboxTableWrap" style="margin-top:12px"></div>
+        <div class="import-actions" style="margin-top:10px">
+          <button class="secondary" type="button" id="inboxAddRowBtn">＋ 加一列</button>
+          <button class="primary" type="button" id="inboxSubmitBtn">📤 送出到信箱</button>
+        </div>
+        <div class="import-hint" id="inboxStatus" style="margin-top:8px"></div>
       </section>
 
       <!-- ===== 結單頁（checkoutView） ===== -->
@@ -1939,6 +2063,10 @@
               <button type="button" class="qty-step-btn" id="qtyPlusBtn" aria-label="增加數量">＋</button>
               <button type="button" class="qty-half-btn" id="qtyHalfBtn">+0.5</button>
             </div>
+          </label>
+          <label>
+            特價（選填）
+            <input id="orderSale" inputmode="numeric" placeholder="特價金額，或直接填「特價」">
           </label>
           <label>
             備註
@@ -2101,6 +2229,7 @@
     <!-- ===== 底部導覽列（5個分頁按鈕） ===== -->
     <nav aria-label="主要功能">
       <button class="active" data-view="shopView">採買</button>
+      <button data-view="addView">加單</button>
       <button data-view="checkoutView">結帳</button>
       <button data-view="ordersView">收單</button>
       <button data-view="splitView">分帳</button>
@@ -2294,14 +2423,14 @@
         currentBuyer: "妹妹",
         orders: demoOrders,
         purchases: {
-          "1768085 柯克蘭廚房紙巾": { boughtQty: 1, price: 0, status: "todo", area: "生活用品", note: "" },
-          "79349 wakamoto 若原錠": { boughtQty: 1, price: 0, status: "todo", area: "藥品", limit: 1, note: "" },
-          "冷凍藍莓": { boughtQty: 3, price: 0, status: "todo", area: "冷藏/冷凍", note: "" },
-          "238721 melano 酵素洗面乳": { boughtQty: 1, price: 0, status: "todo", area: "保健/養生", note: "" },
-          "154399 冷凍三星蔥抓餅": { boughtQty: 1, price: 0, status: "todo", area: "冷藏/冷凍", note: "" },
-          "水蜜桃 1箱": { boughtQty: 1, price: 0, status: "todo", area: "水果", note: "" },
-          "994049 威德益生菌": { boughtQty: 2, price: 0, status: "todo", area: "保健/養生", note: "" },
-          "139289 五月花廚房紙巾": { boughtQty: 1, price: 0, status: "todo", area: "生活用品", note: "" }
+          "1768085 柯克蘭廚房紙巾": { boughtQty: 0, price: 0, status: "todo", area: "生活用品", note: "" },
+          "79349 wakamoto 若原錠": { boughtQty: 0, price: 0, status: "todo", area: "藥品", limit: 1, note: "" },
+          "冷凍藍莓": { boughtQty: 0, price: 0, status: "todo", area: "冷藏/冷凍", note: "" },
+          "238721 melano 酵素洗面乳": { boughtQty: 0, price: 0, status: "todo", area: "保健/養生", note: "" },
+          "154399 冷凍三星蔥抓餅": { boughtQty: 0, price: 0, status: "todo", area: "冷藏/冷凍", note: "" },
+          "水蜜桃 1箱": { boughtQty: 0, price: 0, status: "todo", area: "水果", note: "" },
+          "994049 威德益生菌": { boughtQty: 0, price: 0, status: "todo", area: "保健/養生", note: "" },
+          "139289 五月花廚房紙巾": { boughtQty: 0, price: 0, status: "todo", area: "生活用品", note: "" }
         },
         receiptTotal: "",
         receiptRows: []
@@ -2556,6 +2685,15 @@
       return text;
     }
 
+    // 一次性資料修正：尚未處理（todo）且還沒填單價的品項，實買數量歸零
+    function migrateUnprocessedQty(st) {
+      if (!st || st.qtyZeroFix) return;
+      Object.values(st.purchases || {}).forEach(p => {
+        if (p && p.status === "todo" && !Number(p.price)) p.boughtQty = 0;
+      });
+      st.qtyZeroFix = true;
+    }
+
     // ===== 待辦追蹤（等特價／限購排隊）共用 =====
     const PENDING_BATCHES = ["等特價", "先排限購"];
 
@@ -2626,8 +2764,8 @@
       const vs = currentViewState();
       if (!vs.purchases[item]) {
         // 歷史模式不寫入，回傳預設值
-        if (isViewingArchive()) return { boughtQty: totalQty, price: 0, status: "todo", area, note: "" };
-        vs.purchases[item] = { boughtQty: totalQty, price: 0, status: "todo", area, note: "" };
+        if (isViewingArchive()) return { boughtQty: 0, price: 0, status: "todo", area, note: "" };
+        vs.purchases[item] = { boughtQty: 0, price: 0, status: "todo", area, note: "" };
       }
       if (!vs.purchases[item].area) vs.purchases[item].area = area;
       return vs.purchases[item];
@@ -2636,6 +2774,13 @@
     function itemArea(item) {
       const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
       return purchase.area || item.areas[0] || "待定位";
+    }
+
+    // 🔥 特價：手動切換優先，沒切換過就看任一筆單的備註有沒有「特價」
+    function itemOnSale(item) {
+      const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
+      if (purchase.onSale !== undefined) return !!purchase.onSale;
+      return item.orders.some(o => /特價/.test(String(o.note || "")));
     }
 
     function effectiveBoughtQty(item, purchase) {
@@ -2655,7 +2800,7 @@
           ...order,
           assignedQty,
           waitingQty: qty - assignedQty,
-          state: assignedQty === qty ? "assigned" : assignedQty > 0 ? "partial" : purchase.status === "missing" ? "missed" : "waiting"
+          state: assignedQty === qty ? "assigned" : assignedQty > 0 ? "partial" : purchase.status === "missing" ? "missed" : purchase.status === "todo" ? "pending" : "waiting"
         };
       });
     }
@@ -2730,9 +2875,10 @@
         const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
         const area = itemArea(item);
         const allocation = allocationFor(item);
+        const onSale = itemOnSale(item);
         const notes = item.notes.length ? `<div class="note"><label>備註<input value="${escapeHtml(item.notes.join("；"))}" readonly></label></div>` : "";
         return `
-          <article class="card" data-item="${escapeHtml(item.item)}">
+          <article class="card ${purchase.status === "todo" ? "not-processed" : ""}" data-item="${escapeHtml(item.item)}">
             <div class="item-head">
               <div style="min-width:0;flex:1">
                 <h2 class="item-title">${escapeHtml(item.item)}</h2>
@@ -2740,6 +2886,7 @@
                   <span class="area-chip">${escapeHtml(area)}</span>
                   <a class="area-chip" style="text-decoration:none" href="${photoSearchUrl(item.item)}" target="_blank" rel="noopener">📷 查照片</a>
                   ${item.areas.length > 1 ? `<span class="area-chip">多區可能</span>` : ""}
+                  <button class="sale-chip ${onSale ? "on" : ""}" data-sale-toggle="${escapeHtml(item.item)}" type="button">🔥 特價</button>
                   <span class="area-chip">本週${escapeHtml(state.currentBuyer || "妹妹")}買</span>
                   ${allocation.map(row => `<span class="buyer ${row.state === "assigned" ? "assigned" : row.state === "waiting" ? "waiting" : row.state === "missed" ? "missed" : ""}">#${row.seq} ${escapeHtml(row.customer)} x${row.qty}</span>`).join("")}
                 </div>
@@ -2802,16 +2949,18 @@
       compact.innerHTML = items.map(item => {
         const purchase = purchaseFor(item.item, item.totalQty, item.areas[0] || "待定位");
         const allocation = allocationFor(item);
+        const onSale = itemOnSale(item);
         const assigned = allocation.reduce((sum, row) => sum + row.assignedQty, 0);
         const waiting = allocation.reduce((sum, row) => sum + row.waitingQty, 0);
         const limit = Number(purchase.limit || 0);
-        const customers = allocation.map(row => `#${row.seq} ${row.customer} x${row.qty}${row.waitingQty ? " 排下週" : ""}`).join("、");
+        const customers = allocation.map(row => `#${row.seq} ${row.customer} x${row.qty}${row.waitingQty && row.state !== "pending" ? " 排下週" : ""}`).join("、");
         const qtyText = `需${item.totalQty} / 買${assigned}${waiting ? ` / 下${waiting}` : ""}`;
         return `
-          <article class="compact-row" data-jump="${escapeHtml(item.item)}">
+          <article class="compact-row ${purchase.status === "todo" ? "not-processed" : ""}" data-jump="${escapeHtml(item.item)}">
             <div class="compact-product-line">
               <div class="compact-title">${escapeHtml(item.item)}</div>
               <span class="compact-pill">${escapeHtml(itemArea(item))}</span>
+              ${onSale ? `<span class="compact-pill sale-pill">🔥特價</span>` : ""}
               <span class="compact-pill">${qtyText}${limit ? ` / 限${limit}` : ""}</span>
             </div>
             <div class="compact-customer-line">
@@ -4387,7 +4536,8 @@
         const item = row[indexes.item] || "";
         const pickup = row[indexes.pickup] || "";
         const promo = row[indexes.promo] || "";
-        const noteParts = [pickup, promo].filter(Boolean);
+        const promoText = promo ? (/特價/.test(promo) ? promo : "特價 " + promo) : "";
+        const noteParts = [pickup, promoText].filter(Boolean);
         return normalizeOrder({
           seq: indexes.seq >= 0 ? row[indexes.seq] : rowIndex + 1,
           date: indexes.date >= 0 ? row[indexes.date] : "",
@@ -4657,6 +4807,14 @@
         openRescheduleModal(event.target.dataset.rescheduleSeq, event.target.dataset.customer, event.target.dataset.assigned, event.target.dataset.waiting);
         return;
       }
+      if (event.target.dataset.saleToggle !== undefined) {
+        const name = event.target.dataset.saleToggle;
+        const group = groupedItems().find(x => x.item === name);
+        const p = purchaseFor(name);
+        p.onSale = !(group ? itemOnSale(group) : !!p.onSale);
+        renderAll();
+        return;
+      }
       if (event.target.dataset.feeOverride !== undefined && event.target.dataset.overrideItem !== undefined) {
         const p = purchaseFor(event.target.dataset.overrideItem);
         const val = event.target.dataset.feeOverride;
@@ -4680,7 +4838,13 @@
       const status = event.target.dataset.status;
       const card = event.target.closest("[data-item]");
       if (!status || !card) return;
-      purchaseFor(card.dataset.item).status = status;
+      const purchase = purchaseFor(card.dataset.item);
+      purchase.status = status;
+      // 按「已拿到」時實買數量還是 0 → 自動補成需求數量（想改再手動改）
+      if (status === "done" && !Number(purchase.boughtQty)) {
+        const group = groupedItems().find(x => x.item === card.dataset.item);
+        if (group) purchase.boughtQty = group.totalQty;
+      }
       renderAll();
     });
 
@@ -4747,10 +4911,16 @@
         area: (function(){ const sel = document.getElementById("productArea").value; if (sel && sel !== "待定位") return sel; return guessAreaFromName(productEl.value.trim()) || sel; })(),
         item: normalizeItemName(productEl.value),
         qty: clampQtyToHalf(document.getElementById("quantity").value || 1),
-        note: document.getElementById("orderNote").value.trim()
+        note: (function(){
+          const saleText = document.getElementById("orderSale").value.trim();
+          const base = document.getElementById("orderNote").value.trim();
+          const saleNote = saleText ? (/特價/.test(saleText) ? saleText : "特價 " + saleText) : "";
+          return [saleNote, base].filter(Boolean).join(" / ");
+        })()
       };
       state.orders.push(order);
-      purchaseFor(order.item, order.qty, order.area);
+      const newPurchase = purchaseFor(order.item, order.qty, order.area);
+      if (document.getElementById("orderSale").value.trim()) newPurchase.onSale = true;
       event.target.reset();
       document.getElementById("quantity").value = 1;
       renderAll();
@@ -5092,11 +5262,183 @@
     });
 
     // ── 雲端即時同步（Supabase）──
+    // ===== 加單頁（信箱）：獨立資料列 inbox-v1，與主資料物理隔離 =====
+    let inboxRows = [];
+
+    function isEditingInbox() {
+      const el = document.activeElement;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && !!el.closest("#addView");
+    }
+
+    function applyRemoteInbox(data) {
+      inboxRows = Array.isArray(data && data.rows) ? data.rows : [];
+      updateInboxBadge();
+      if (!isEditingInbox()) renderInbox();
+    }
+
+    function updateInboxBadge() {
+      const badge = document.getElementById("inboxBadge");
+      if (!badge) return;
+      const n = inboxRows.filter(r => r && (String(r.customer || "").trim() || String(r.item || "").trim())).length;
+      document.getElementById("inboxBadgeCount").textContent = n;
+      badge.classList.toggle("hidden", n === 0);
+    }
+
+    function renderInbox() {
+      const wrap = document.getElementById("inboxTableWrap");
+      if (!wrap) return;
+      if (!inboxRows.length) {
+        wrap.innerHTML = `<div class="empty">目前信箱是空的，貼上一串文字或按「＋ 加一列」開始</div>`;
+        updateInboxBadge();
+        return;
+      }
+      const head = `
+        <div class="inbox-row inbox-head">
+          <span>日期</span><span>姓名</span><span>編號＋商品</span><span>數量</span><span>特價</span><span></span>
+        </div>`;
+      const body = inboxRows.map((row, i) => `
+        <div class="inbox-row" data-inbox-index="${i}">
+          <input data-inbox-field="date" value="${escapeHtml(row.date || "")}" placeholder="7/18">
+          <input data-inbox-field="customer" value="${escapeHtml(row.customer || "")}" placeholder="姓名">
+          <input data-inbox-field="item" value="${escapeHtml(row.item || "")}" placeholder="編號＋商品">
+          <input data-inbox-field="qty" inputmode="decimal" value="${escapeHtml(String(row.qty ?? ""))}" placeholder="1">
+          <input data-inbox-field="promo" value="${escapeHtml(row.promo || "")}" placeholder="特價">
+          <button class="inbox-del" data-inbox-del="${i}" type="button">✕</button>
+        </div>`).join("");
+      wrap.innerHTML = head + body;
+      updateInboxBadge();
+    }
+
+    // 整串貼上自動拆欄：免標題列，順序「日期 姓名 編號＋商品 數量 特價」
+    function parseInboxText(text) {
+      const isDateLike = s => /^\d{1,2}[\/.-]\d{1,2}$/.test(s) || /等特價|待特價|排隊|排限購|限購排隊|日期未到|未到|今天|今日/.test(s);
+      const normDate = s => /今天|今日/.test(s) ? todayDateStr() : s;
+      const isNum = s => /^\d+(\.\d+)?$/.test(s);
+      return String(text || "").split(/\r?\n/).map(line => {
+        const raw = line.trim();
+        if (!raw) return null;
+        if (raw.includes("\t")) {
+          let c = raw.split("\t").map(s => s.trim());
+          if (!isDateLike(c[0] || "")) c = [""].concat(c);
+          return {
+            date: normDate(c[0] || "") || todayDateStr(),
+            customer: c[1] || "",
+            item: c[2] || "",
+            qty: isNum(c[3] || "") ? Number(c[3]) : 1,
+            promo: c[4] || ""
+          };
+        }
+        let t = raw.split(/\s+/);
+        let date = todayDateStr();
+        if (isDateLike(t[0])) date = normDate(t.shift());
+        const customer = t.shift() || "";
+        let promo = "";
+        if (t.length >= 2) {
+          const last = t[t.length - 1], prev = t[t.length - 2];
+          if (/特價/.test(last)) promo = t.pop();
+          else if (isNum(last) && isNum(prev) && t.length >= 3) promo = t.pop();
+        }
+        let qty = 1;
+        if (t.length >= 2 && isNum(t[t.length - 1])) qty = Number(t.pop());
+        return { date, customer, item: t.join(" "), qty, promo };
+      }).filter(r => r && (r.customer || r.item));
+    }
+
+    function setInboxStatus(text) {
+      const el = document.getElementById("inboxStatus");
+      if (el) el.textContent = text;
+    }
+
+    document.getElementById("inboxTableWrap").addEventListener("input", event => {
+      const rowEl = event.target.closest("[data-inbox-index]");
+      const field = event.target.dataset.inboxField;
+      if (!rowEl || !field) return;
+      const row = inboxRows[Number(rowEl.dataset.inboxIndex)];
+      if (row) row[field] = event.target.value;
+    });
+
+    document.getElementById("inboxTableWrap").addEventListener("click", event => {
+      if (event.target.dataset.inboxDel !== undefined) {
+        inboxRows.splice(Number(event.target.dataset.inboxDel), 1);
+        renderInbox();
+      }
+    });
+
+    document.getElementById("inboxAddRowBtn").addEventListener("click", () => {
+      inboxRows.push({ date: todayDateStr(), customer: "", item: "", qty: 1, promo: "" });
+      renderInbox();
+      const rows = document.querySelectorAll("#inboxTableWrap [data-inbox-index]");
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) lastRow.querySelector('input[data-inbox-field="customer"]').focus();
+    });
+
+    document.getElementById("inboxParseBtn").addEventListener("click", () => {
+      const ta = document.getElementById("inboxPaste");
+      const parsed = parseInboxText(ta.value);
+      if (!parsed.length) { setInboxStatus("看不懂貼上的內容，請檢查格式（順序：日期 姓名 商品 數量 特價）"); return; }
+      inboxRows = inboxRows.concat(parsed);
+      ta.value = "";
+      renderInbox();
+      setInboxStatus(`已拆出 ${parsed.length} 筆，每格都可以直接修改，確認後按「送出到信箱」`);
+    });
+
+    document.getElementById("inboxSubmitBtn").addEventListener("click", async () => {
+      const rows = inboxRows.filter(r => r && (String(r.customer || "").trim() || String(r.item || "").trim()));
+      if (!window._fb || !window._fb.saveInbox) { setInboxStatus("連線尚未就緒，請稍候再試"); return; }
+      const btn = document.getElementById("inboxSubmitBtn");
+      btn.disabled = true;
+      const ok = await window._fb.saveInbox(rows);
+      btn.disabled = false;
+      inboxRows = rows;
+      renderInbox();
+      setInboxStatus(ok
+        ? `✅ 已送出，信箱目前共 ${rows.length} 筆（現場按「併入」才會進主清單）`
+        : "❌ 送出失敗，請檢查網路後再試一次");
+    });
+
+    // 現場：把信箱新單併入本週清單（重用試算表匯入的合併邏輯，只加新的、重複自動略過）
+    document.getElementById("inboxBadge").addEventListener("click", () => {
+      if (isViewingArchive()) { alert("正在看歷史週，請先切回本週再併入"); return; }
+      const rows = inboxRows.filter(r => r && (String(r.customer || "").trim() || String(r.item || "").trim()));
+      if (!rows.length) return;
+      if (!confirm(`要把 ${rows.length} 筆加單併入本週清單嗎？\n（重複的單會自動略過，併入後信箱會清空）`)) return;
+      const tsv = [["日期", "姓名", "編號-商品簡稱", "數量", "特價"].join("\t")]
+        .concat(rows.map(r => [r.date || "", r.customer || "", r.item || "", r.qty || 1, r.promo || ""].join("\t")))
+        .join("\n");
+      const added = importRowsFromText(tsv, "merge");
+      inboxRows = [];
+      if (window._fb && window._fb.saveInbox) window._fb.saveInbox([]);
+      renderInbox();
+      updateInboxBadge();
+      renderAll();
+      alert(`已併入 ${added} 筆新單${added < rows.length ? `（${rows.length - added} 筆重複，已自動略過）` : ""}`);
+    });
+
     // ===== 遠端同步套用／匯出 CSV・Excel =====
+    let _pendingRemote = null;
+    function isUserTyping() {
+      const el = document.activeElement;
+      if (!el) return false;
+      if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return false;
+      return !!el.closest(".view");
+    }
+    // 打字保護：輸入中收到遠端更新先暫存，離開欄位後才套用重繪
+    document.addEventListener("focusout", () => {
+      setTimeout(() => {
+        if (_pendingRemote && !isUserTyping()) {
+          const remote = _pendingRemote;
+          _pendingRemote = null;
+          applyRemoteState(remote);
+        }
+      }, 300);
+    });
+
     function applyRemoteState(remote) {
       if (remote.version !== 7) return; // 版本不符，略過
+      if (isUserTyping()) { _pendingRemote = remote; return; }
       Object.assign(state, remote);
       migrateCustomerNames(state);
+      migrateUnprocessedQty(state);
       renderAll();
       setSync("live");
     }
@@ -5114,6 +5456,9 @@
       setSync("live");
       window._fb.listen(remote => {
         applyRemoteState(remote);
+      });
+      window._fb.listenInbox(data => {
+        applyRemoteInbox(data);
       });
     });
 
@@ -5319,7 +5664,9 @@
     });
 
     migrateCustomerNames(state);
+    migrateUnprocessedQty(state);
     renderAll();
+    renderInbox();
   </script>
   <!-- redeploy trigger: 臨時加收功能重新推送以觸發全新 GitHub Pages 部署 -->
 </body>
