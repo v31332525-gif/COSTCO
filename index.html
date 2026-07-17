@@ -4301,7 +4301,7 @@
     });
 
     // ===== 總繪製 renderAll／現金核對／分層對帳／帳款鎖定 =====
-    function renderAll() {
+    function renderAll(shouldSave = true) {
       renderWeekSwitcher();
       renderItems();
       renderCheckout();
@@ -4313,7 +4313,10 @@
       renderSummary();
       renderCancelledOrders();
       renderHistory();
-      if (!isViewingArchive()) saveState();
+      // shouldSave=false：套用「剛從遠端收到」的資料時使用，只重繪畫面、不要再存檔，
+      // 不然每台裝置收到別人的更新都會把同一份資料原封不動再推回去，
+      // 造成不必要的回音，跟本機真正的改動搶拍、觸發連續重繪（畫面一直跳動）
+      if (shouldSave && !isViewingArchive()) saveState();
     }
 
     // 需求七：實體現金核對看板 -- 已收 / 未收（欠款）/ 應收大計
@@ -5443,7 +5446,7 @@
       // 上次存檔那個時間點，之後只要它做任何存檔動作，就會用過期快照把大家的
       // 更新（例如別人剛做的刪除）整包蓋掉
       localStorage.setItem("costco-helper-v1", JSON.stringify(state));
-      renderAll();
+      renderAll(false);
       setSync("live");
     }
 
