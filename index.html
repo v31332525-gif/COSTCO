@@ -2388,7 +2388,7 @@
       const area = String(purchase.area || "");
       // 「未滿100+10」改成手動獨立勾選（purchase.extra10），不再由單價自動判斷；
       // 「免代購費」維持真正0元，不疊加這個+10。
-      const extra10 = purchase.extra10 ? 10 : 0;
+      const extra10 = 0; // 「未滿100+10」按鈕已移除（2026/7/17），手動指定改為單純 0/10/20/30
       // Check manual override first
       const override = purchase.feeOverride;
       if (override === "free") return 0;
@@ -2914,7 +2914,6 @@
             <div class="fee-preview">
               代購費：每件 +$${calcItemFee(purchase, purchase.price)}
               ${purchase.feeOverride ? "（手動指定）" : purchase.bulky ? "（大件）" : /冷藏|冷凍/.test(area) ? "（冷藏/冷凍）" : "（常溫）"}
-              ${purchase.feeOverride !== "free" && purchase.extra10 ? "＋10（未滿100）" : ""}
             </div>
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
@@ -2922,7 +2921,6 @@
               <button class="fee-tag-btn ${purchase.feeOverride === 'ten' ? 'active' : ''}" data-fee-override="ten" data-override-item="${escapeHtml(item.item)}">加 10 元</button>
               <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">加 20 元</button>
               <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">加 30 元</button>
-              <button class="fee-tag-btn ${purchase.extra10 ? 'active' : ''}" data-extra10-item="${escapeHtml(item.item)}">＋10（未滿100）</button>
             </div>
             <div class="status-row" style="grid-template-columns:1fr 1fr 1fr">
               <button data-status="done" class="${purchase.status === "done" ? "selected" : ""}">已拿到</button>
@@ -4821,13 +4819,6 @@
         const p = purchaseFor(event.target.dataset.overrideItem);
         const val = event.target.dataset.feeOverride;
         p.feeOverride = (val && p.feeOverride !== val) ? val : undefined;
-        renderAll();
-        return;
-      }
-      if (event.target.dataset.extra10Item !== undefined) {
-        // 獨立的「未滿100+10」手動按鈕：自己決定要不要加，不受單價自動判斷
-        const p = purchaseFor(event.target.dataset.extra10Item);
-        p.extra10 = !p.extra10;
         renderAll();
         return;
       }
