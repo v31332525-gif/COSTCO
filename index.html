@@ -2396,6 +2396,7 @@
       if (override === "hot") return 30 + extra10;
       if (override === "cold") return 30 + extra10;
       if (override === "normal") return 20 + extra10;
+      if (override === "ten") return 10 + extra10;
       // Auto-detect
       if (purchase.bulky) return 30 + extra10;           // 大件：固定+30
       let fee = /冷藏|冷凍/.test(area) ? 30 : 20;           // 冷藏冷凍+30，其他+20
@@ -2918,6 +2919,7 @@
             <div class="fee-override-row">
               <span class="fee-override-label">手動指定：</span>
               <button class="fee-tag-btn ${purchase.feeOverride === 'free' ? 'active' : ''}" data-fee-override="free" data-override-item="${escapeHtml(item.item)}">0 元</button>
+              <button class="fee-tag-btn ${purchase.feeOverride === 'ten' ? 'active' : ''}" data-fee-override="ten" data-override-item="${escapeHtml(item.item)}">加 10 元</button>
               <button class="fee-tag-btn ${purchase.feeOverride === 'normal' ? 'active' : ''}" data-fee-override="normal" data-override-item="${escapeHtml(item.item)}">加 20 元</button>
               <button class="fee-tag-btn ${['cold','hot','bulky'].includes(purchase.feeOverride) ? 'active' : ''}" data-fee-override="cold" data-override-item="${escapeHtml(item.item)}">加 30 元</button>
               <button class="fee-tag-btn ${purchase.extra10 ? 'active' : ''}" data-extra10-item="${escapeHtml(item.item)}">＋10（未滿100）</button>
