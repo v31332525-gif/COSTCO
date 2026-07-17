@@ -5437,6 +5437,9 @@
       if (remote.version !== 7) return; // 版本不符，略過
       if (isUserTyping()) { _pendingRemote = remote; return; }
       Object.assign(state, remote);
+      // 旗標以遠端資料為準：舊版裝置存的資料沒有旗標，Object.assign 不會清掉本機殘留的 true，
+      // 會讓資料修正被跳過（上線當天實測踩到），所以這裡強制重設
+      state.qtyZeroFix = !!remote.qtyZeroFix;
       migrateCustomerNames(state);
       migrateUnprocessedQty(state);
       renderAll();
