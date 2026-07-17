@@ -537,6 +537,23 @@
       font-weight: 800;
       min-height: 42px;
     }
+    .inbox-promo-toggle {
+      min-height: 42px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      opacity: .55;
+    }
+    .inbox-promo-toggle.on {
+      background: #fff3e6;
+      border-color: #f2b366;
+      color: #b45309;
+      opacity: 1;
+    }
 
     .item-head {
       display: flex;
@@ -5302,7 +5319,7 @@
           <input data-inbox-field="customer" value="${escapeHtml(row.customer || "")}" placeholder="姓名">
           <input data-inbox-field="item" value="${escapeHtml(row.item || "")}" placeholder="編號＋商品">
           <input data-inbox-field="qty" inputmode="decimal" value="${escapeHtml(String(row.qty ?? ""))}" placeholder="1">
-          <input data-inbox-field="promo" value="${escapeHtml(row.promo || "")}" placeholder="特價">
+          <button class="inbox-promo-toggle ${row.promo ? "on" : ""}" data-inbox-promo-toggle="${i}" type="button">${row.promo ? "🔥 特價" : "－"}</button>
           <button class="inbox-del" data-inbox-del="${i}" type="button">✕</button>
         </div>`).join("");
       wrap.innerHTML = head + body;
@@ -5371,6 +5388,12 @@
     document.getElementById("inboxTableWrap").addEventListener("click", event => {
       if (event.target.dataset.inboxDel !== undefined) {
         inboxRows.splice(Number(event.target.dataset.inboxDel), 1);
+        renderInbox();
+        return;
+      }
+      if (event.target.dataset.inboxPromoToggle !== undefined) {
+        const row = inboxRows[Number(event.target.dataset.inboxPromoToggle)];
+        if (row) row.promo = row.promo ? "" : "特價";
         renderInbox();
       }
     });
