@@ -4565,8 +4565,12 @@
         return imported.length;
       }
       // 合併模式：只新增新的列，既有訂單與採買進度不動
+      // 已取消的訂單也要一起排除，不然來源資料（社群/信箱/總表）沒清掉的話，
+      // 同一筆被刪除的訂單下次匯入/併入又會被當成新單復活
       const keyOf = o => [o.customer, o.item, o.date].join("|");
-      const existing = new Set(state.orders.map(keyOf));
+      const existing = new Set(
+        state.orders.map(keyOf).concat((state.cancelledOrders || []).map(keyOf))
+      );
       let nextSeq = Math.max(0, ...state.orders.map(o => Number(o.seq || 0))) + 1;
       const added = imported.filter(o => !existing.has(keyOf(o)));
       added.forEach(order => {
@@ -5435,6 +5439,10 @@
       state.qtyZeroFix = !!remote.qtyZeroFix;
       migrateCustomerNames(state);
       migrateUnprocessedQty(state);
+      // 把遠端資料同步寫回本機快取，不然這台裝置的 localStorage 會停留在它自己
+      // 上次存檔那個時間點，之後只要它做任何存檔動作，就會用過期快照把大家的
+      // 更新（例如別人剛做的刪除）整包蓋掉
+      localStorage.setItem("costco-helper-v1", JSON.stringify(state));
       renderAll();
       setSync("live");
     }
